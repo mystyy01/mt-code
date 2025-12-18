@@ -10,7 +10,6 @@ logging.basicConfig(filename=LOG_FILE_STR, level=logging.DEBUG, format="%(asctim
 class FolderView(DirectoryTree):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.watch_path()
     async def watch_path_for_changes(self, path: Path, interval: float = 1.0):
         path = Path(path)
         if not path.is_dir():
