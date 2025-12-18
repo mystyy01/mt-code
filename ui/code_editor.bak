@@ -1,0 +1,318 @@
+from textual import events
+from textual.widgets import TextArea, Static, Input
+from core.file_management import read_file, delete_file, save_file
+from typing import Literal
+from textual.message import Message
+from textual.events import Event
+from textual.content import Content
+from rich.console import RenderableType
+import logging 
+from utils.add_languages import register_supported_languages
+from commands.messages import EditorSavedAs, UseFile, EditorOpenFile, EditorSaveFile, WorkspaceNextTab
+from lsp.pyright import PyrightServer
+from pathlib import Path
+import asyncio
+logging.basicConfig(filename="editor_view.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+
+class CodeEditor(TextArea):
+    def __init__(self,  tab_id: str, file_path="", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if file_path:
+            self.file_path = file_path
+        else:
+            self.file_path = ""
+        self.tab_id = tab_id
+        self.pairs = {
+            "(": ")",
+            "[": "]",
+            "{": "}",
+        }
+        if self.language == "python":
+            if self.file_path:
+                self.lsp = PyrightServer(self.file_path)
+                logging.info(str(self.lsp))
+                self._completion_task: asyncio.Task | None = None
+                self._completion_delay = 0.3  
+            else:
+                self.lsp = ""
+            
+        register_supported_languages(self)
+    @classmethod
+    def code_editor(
+        cls,
+        text: str = "",
+        *,
+        language: str | None = None,
+        theme: str = "monokai",
+        soft_wrap: bool = False,
+        tab_behavior: Literal["focus", "indent"] = "indent",
+        read_only: bool = False,
+        show_cursor: bool = True,
+        show_line_numbers: bool = True,
+        line_number_start: int = 1,
+        max_checkpoints: int = 50,
+        name: str | None = None,
+        id: str | None = None,
+        classes: str | None = None,
+        disabled: bool = False,
+        tooltip: RenderableType | None = None,
+        compact: bool = False,
+        highlight_cursor_line: bool = True,
+        placeholder: str | Content = "",
+        file: str = "",
+        tab_id: str = ""
+    ) -> TextArea:
+        """Construct a new `TextArea` with sensible defaults for editing code.
+
+        This instantiates a `TextArea` with line numbers enabled, soft wrapping
+        disabled, "indent" tab behavior, and the "monokai" theme.
+
+        Args:
+            text: The initial text to load into the TextArea.
+            language: The language to use.
+            theme: The theme to use.
+            soft_wrap: Enable soft wrapping.
+            tab_behavior: If 'focus', pressing tab will switch focus. If 'indent', pressing tab will insert a tab.
+            read_only: Enable read-only mode. This prevents edits using the keyboard.
+            show_cursor: Show the cursor in read only mode (no effect otherwise).
+            show_line_numbers: Show line numbers on the left edge.
+            line_number_start: What line number to start on.
+            name: The name of the `TextArea` widget.
+            id: The ID of the widget, used to refer to it from Textual CSS.
+            classes: One or more Textual CSS compatible class names separated by spaces.
+            disabled: True if the widget is disabled.
+            tooltip: Optional tooltip
+            compact: Enable compact style (without borders).
+            highlight_cursor_line: Highlight the line under the cursor.
+        """
+        return cls(
+            text="",
+            language=language,
+            theme=theme,
+            soft_wrap=soft_wrap,
+            tab_behavior=tab_behavior,
+            read_only=read_only,
+            show_cursor=show_cursor,
+            show_line_numbers=show_line_numbers,
+            line_number_start=line_number_start,
+            max_checkpoints=max_checkpoints,
+            name=name,
+            id=id,
+            classes=classes,
+            disabled=disabled,
+            tooltip=tooltip,
+            compact=compact,
+            highlight_cursor_line=highlight_cursor_line,
+            placeholder=placeholder,
+            file_path=file,
+            tab_id=tab_id
+        )
+    # def check_consume_key(self, key, character):
+    #     if key == "tab":
+    #         return False  # allow the binding to see it
+    #     return super().check_consume_key(key, character)
+    # LSP STUFF
+
+
+
+    async def did_mount_lsp(self):
+        if self.lsp and self.file_path:
+            await self.lsp.send_notification(
+                "textDocument/didOpen",
+                {
+                    "textDocument": {
+                        "uri": Path(self.file_path).as_uri(),
+                        "languageId": self.language,
+                        "version": 1,
+                        "text": self.text
+                    }
+                }
+            )
+    async def on_text_area_changed(self, event: TextArea.Changed):
+        if event.text_area.id == self.id:
+            if self.lsp and self.file_path:
+                await self.lsp.send_notification(
+                    "textDocument/didChange",
+                    {
+                        "textDocument": {"uri": Path(self.file_path).as_uri(), "version": 1},
+                        "contentChanges": [{"text": self.text}]
+                    }
+                )
+                # debounce completions
+            if self._completion_task:
+                self._completion_task.cancel()  # cancel previous pending task
+
+            self._completion_task = asyncio.create_task(self._debounced_completions())
+
+    async def _debounced_completions(self):
+        try:
+            await asyncio.sleep(self._completion_delay)
+            await self.show_completions()
+        except asyncio.CancelledError:
+            pass  # task was cancelled because new keystroke came in
+    async def request_completions(self):
+        if not self.lsp or not self.file_path:
+            return []
+        line, col = self.cursor_location
+        resp = await self.lsp.send_request(
+            "textDocument/completion",
+            {
+                "textDocument": {"uri": Path(self.file_path).as_uri()},
+                "position": {"line": line, "character": col}
+            }
+        )
+        logging.info(resp)
+        return resp.get("result", [])
+    async def show_completions(self):
+        items = await self.request_completions()
+        logging.info(items)
+        if not items:
+            return
+        # show overlay at editor.cursor_location with completion list
+
+
+
+
+
+
+
+    def change_language(self, language: str | None) -> None:
+        logging.info("changed syntax")
+        self.language = language
+        if language != "python":
+            self.lsp = ""
+    def load_text_silent(self, text):
+        """Load text into the TextArea wihtout firing the Changed event
+
+        This will replace the text currently in the TextArea and clear the edit history.
+
+        Args:
+            text: The text to load into the TextArea.
+        """
+        self.history.clear()
+        self._set_document(text, self.language)
+        # self.post_message(self.Changed(self).set_sender(self))
+        self.update_suggestion()
+    async def on_mount(self):
+        await self.lsp.start()
+        if self.file_path:
+            self.load_text
+            self.load_text_silent(read_file(self.file_path))
+        else:
+            self.text = ""
+    def save_as(self):
+        self.post_message(EditorSavedAs(self.text))
+    def open_file(self):
+        self.post_message(EditorOpenFile())
+    def save_file(self):
+        logging.info(self.file_path)
+        if self.file_path:
+            logging.info("saving to specified file path")
+            save_file(self.file_path, self.text)
+        else:
+            logging.info(self.file_path)
+            logging.info("saving as")
+            self.save_as()
+        #needs tab id
+        logging.info("code_editor id is: " + self.tab_id)
+        self.post_message(EditorSaveFile(self.tab_id))
+    def _on_key(self, event: events.Key) -> None:
+        # Normalize Shift+Backspace: some terminals report this as a distinct
+        # key (e.g. "shift+backspace") which TextArea doesn't handle as
+        # a regular backspace. Detect those cases and forward a normalized
+        # backspace event to the parent handler so the default deletion
+        # behavior runs.
+        try:
+            keyname = getattr(event, "key", None)
+        except Exception:
+            keyname = None
+        if keyname and (keyname == "shift+backspace" or (keyname == "backspace" and getattr(event, "shift", False))):
+            # mutate event to look like a plain backspace and let the
+            # superclass handle it.
+            try:
+                event.key = "backspace"
+                event.shift = False
+            except Exception:
+                pass
+            return super()._on_key(event)
+
+        # if event.character == "(":
+        #     self.insert("()")
+        #     self.move_cursor_relative(columns=-1)
+        #     event.prevent_default()
+        # if event.character == ")":
+        #     # if you press ) after typing () then it will move your cursor to the already typed )
+        #     try:
+        #         char = str(self.get_line(self.cursor_location[0]))[self.cursor_location[1]]
+        #         if char == ")":
+        #             self.move_cursor_relative(columns=+1)
+        #             event.prevent_default()
+        #     except IndexError:
+        #         return
+        if event.character in self.pairs:
+            self.insert(event.character + self.pairs[event.character])
+            self.move_cursor_relative(columns=-1)
+            event.prevent_default()
+
+        elif event.character in self.pairs.values():
+            try:
+                char = str(self.get_line(self.cursor_location[0]))[self.cursor_location[1]]
+                if char == event.character:
+                    self.move_cursor_relative(columns=1)
+                    event.prevent_default()
+            except IndexError:
+                pass
+
+        elif event.character == '"':
+            try:
+                char = str(self.get_line(self.cursor_location[0]))[self.cursor_location[1]]
+                line = str(self.get_line(self.cursor_location[0]))
+                logging.info("line: " + line)
+                logging.info("char: " + char)
+                # if cursor is already before a closing quote, skip over it
+                if char == '"':
+                    self.move_cursor_relative(columns=1)
+                else:
+                    self.insert('""')
+                    self.move_cursor_relative(columns=-1)
+                event.prevent_default()
+            except IndexError:
+                logging.info("index error")
+                self.insert('""')
+                self.move_cursor_relative(columns=-1)
+                event.prevent_default()
+
+        elif event.character == "'":
+            try:
+                char = str(self.get_line(self.cursor_location[0]))[self.cursor_location[1]]
+                line = str(self.get_line(self.cursor_location[0]))
+                logging.info("line: " + line)
+                logging.info("char: " + char)
+                # if cursor is already before a closing quote, skip over it
+                if char == "'":
+                    self.move_cursor_relative(columns=1)
+                else:
+                    self.insert("''")
+                    self.move_cursor_relative(columns=-1)
+                event.prevent_default()
+            except IndexError:
+                logging.info("index error")
+                self.insert("''")
+                self.move_cursor_relative(columns=-1)
+                event.prevent_default()
+
+        if event.key == "ctrl+a":
+            self.select_all()
+        if event.key == "ctrl+s":
+            self.save_file()
+    # async def on_key(self, event: events.Key):
+    #     logging.info("recieved key press")
+    #     if event.key == "ctrl+tab":
+    #         logging.info("control_tab")
+    #         event.prevent_default()  # stops TextArea from swallowing it
+    #         self.post_message(WorkspaceNextTab())
+
+    # def on_use_file(self, message: UseFile):
+    #     logging.info(f"using file {message.file_path}")
+    #     self.file_path = message.file_path
+    #     self.text = read_file(self.file_path)

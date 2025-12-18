@@ -1,0 +1,139 @@
+Screen {
+    layers: below above diagnostics;
+    align: center middle;
+    layout: horizontal;
+}
+
+#tab_bar{
+    dock:top;
+    height: 3;
+}
+
+.overlay {
+    position: absolute;
+    offset: 50% 50%;
+    width: 50%;
+    height: 50%;
+    content-align: center middle;
+    layer: above;
+    padding: 1 1 1 1;
+}
+
+/* Completions overlay - positioned dynamically at cursor */
+#completions_overlay {
+    position: absolute;
+    width: 40;
+    height: 7;
+    layer: above;
+    padding: 0;
+    border: solid $primary;
+    background: $surface;
+    overflow: auto;
+}
+
+#completions_list {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: $surface;
+    padding: 0;
+}
+
+#completions_list > .option-list--option {
+    padding: 0 1;
+    height: 1;
+}
+
+#completions_list > .option-list--option-highlighted {
+    background: $primary;
+    color: $text;
+}
+
+/* Diagnostic markers */
+.diagnostic-error {
+    color: $error;
+    text-style: underline;
+    layer: diagnostics;
+}
+
+.diagnostic-warning {
+    color: $warning;
+    text-style: underline;
+    layer: diagnostics;
+}
+
+.diagnostic-hint {
+    color: $accent;
+    text-style: underline;
+    layer: diagnostics;
+}
+
+.diagnostic-tooltip {
+    position: absolute;
+    background: $panel;
+    color: $text;
+    padding: 1;
+    border: solid $error;
+    layer: above;
+    max-width: 50;
+}
+
+.commands_options{
+    height: 80%
+}
+
+.syntax_options{
+    height: 80%
+}
+
+.find_and_replace {
+    position: absolute;
+    offset: 100% 0%;
+    width: 50%;
+    height: 15%;
+    content-align: center middle;
+    layer: above;
+    padding: 1 1 1 1;
+}
+
+.success_message{
+    text-align: center;
+    padding: 2 1 1 1
+}
+
+.close_button{
+    position: absolute;
+    offset: 50% 450%;
+}
+
+.grey{
+    color: #636261;
+}
+
+.center{
+    text-align: center
+}
+
+TerminalContainer{
+    height: 30%
+}
+
+.padding_1{
+    padding: 1 1 1 1;
+}
+
+.overlay_title{
+    dock: top;
+}
+
+.confirm_container {
+    height: 100%;
+}
+
+.spacer {
+    height: 2fr;
+}
+
+.bottom_buttons {
+    align: center middle;
+}

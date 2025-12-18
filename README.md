@@ -1,0 +1,1 @@
+# mt-code is a low-profile code editor with basic functionality

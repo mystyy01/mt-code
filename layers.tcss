@@ -1,0 +1,22 @@
+Screen {
+    align: center middle;
+    layers: below above;
+}
+
+Button {
+    width: 28;
+    height: 8;
+    color: auto;
+    content-align: center middle;
+}
+
+#box1 {
+    layer: above;
+    background: darkcyan;
+}
+
+#box2 {
+    layer: above;
+    background: orange;
+    offset: 12 6;
+}

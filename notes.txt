@@ -1,0 +1,14 @@
+need to fix files showing as dirty when first opening
+need to add select interpreter for command palette to select the syntax highlighting
+
+could do with a bit of polish
+
+everything else works!
+
+this was wrote in mt-code!
+
+fix terminal prompt deletion
+
+change buffer size on the terminal textarea
+
+open folders and have the files listed on the left with DirectoryTree() class
