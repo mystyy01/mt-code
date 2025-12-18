@@ -26,6 +26,12 @@ class KeyHandlersMixin:
             "[": "]",
             "{": "}",
         }
+        # Keywords that trigger dedent on next line (Python)
+        self.dedent_keywords = {"return", "break", "continue", "pass", "raise"}
+        # Languages that use colon-based indentation
+        self.colon_indent_languages = {"python"}
+        # Languages that use brace-based indentation
+        self.brace_indent_languages = {"javascript", "typescript", "c", "cpp", "java", "rust", "go", "json"}
 
     def _handle_key_event(self, event):
         """
@@ -49,6 +55,10 @@ class KeyHandlersMixin:
 
         # Handle quotes
         if self._handle_quotes(event):
+            return True
+
+        # Handle auto-indentation on Enter
+        if self._handle_auto_indent(event):
             return True
 
         # Handle shortcuts
@@ -131,3 +141,61 @@ class KeyHandlersMixin:
         if event.key == "ctrl+space":
             asyncio.create_task(self.show_completions())
             event.prevent_default()
+
+    def _handle_auto_indent(self, event):
+        """Handle auto-indentation on Enter key. Returns True if handled."""
+        if event.key != "enter":
+            return False
+
+        # Get current line and cursor position
+        row, col = self.cursor_location
+        current_line = str(self.get_line(row))
+
+        # Calculate current indentation
+        current_indent = self._get_line_indent(current_line)
+        indent_str = " " * current_indent
+
+        # Get the indent unit (spaces per level)
+        indent_unit = getattr(self, "indent_width", 4)
+
+        # Check if we should increase indent (line ends with colon for Python-like languages)
+        should_increase = False
+        if self.language in self.colon_indent_languages:
+            stripped = current_line.rstrip()
+            if stripped.endswith(":"):
+                should_increase = True
+
+        # Check if we should decrease indent (dedent keywords)
+        should_decrease = False
+        if self.language in self.colon_indent_languages:
+            stripped = current_line.strip()
+            first_word = stripped.split("(")[0].split()[0] if stripped.split() else ""
+            if first_word in self.dedent_keywords:
+                should_decrease = True
+
+        # Calculate new indentation
+        if should_increase:
+            new_indent = indent_str + " " * indent_unit
+        elif should_decrease:
+            # Dedent by one level, but not below 0
+            new_indent_level = max(0, current_indent - indent_unit)
+            new_indent = " " * new_indent_level
+        else:
+            new_indent = indent_str
+
+        # Insert newline with appropriate indentation
+        self.insert("\n" + new_indent)
+        event.prevent_default()
+        return True
+
+    def _get_line_indent(self, line: str) -> int:
+        """Get the number of leading spaces in a line."""
+        count = 0
+        for char in line:
+            if char == " ":
+                count += 1
+            elif char == "\t":
+                count += getattr(self, "indent_width", 4)
+            else:
+                break
+        return count

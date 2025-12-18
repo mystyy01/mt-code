@@ -25,6 +25,7 @@ from ui.command_palette import CommandPalette
 from ui.terminal import Terminal, TerminalContainer
 from ui.success_overlay import SuccessOverlay
 from ui.folder_view import FolderView
+from ui.run_button import RunButtonPressed
 from git_utils import get_repo, git_actions
 from workspace.workspace_commands import WorkspaceCommandsMixin
 
@@ -57,12 +58,15 @@ class Workspace(WorkspaceCommandsMixin, Container):
         else:
             tabs.update({"0": EditorView()})
         self.tab_manager = TabManager(tabs, repo=self.repo)
-
         self.mount(self.tab_manager)
         self.terminal = Terminal("/bin/zsh", "> ")
         self.terminal_container = TerminalContainer(terminal=self.terminal)
         self.mount(self.terminal_container)
         self.focus()
+
+    def on_run_button_pressed(self, event: RunButtonPressed):
+        """Handle run button press."""
+        self.cmd_run_file()
 
     # === Tab Management ===
 

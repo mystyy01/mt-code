@@ -34,6 +34,13 @@ Terminal:
   Ctrl+D             Send EOF
 
 
+Running Code:
+  ▶ Run button     Click to run current file
+  Ctrl+P > Run     Run from command palette
+
+Supported: Python, JS, TS, C, C++, Go, Rust, Ruby, and more
+
+
 FEATURES
 --------
 
@@ -43,6 +50,7 @@ FEATURES
 - Git integration (add, commit, push)
 - File explorer sidebar
 - Tab-based editing
+- Run button for quick code execution
 
 
 Happy coding!

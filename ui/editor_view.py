@@ -52,7 +52,7 @@ class EditorView(Container):
                     os.makedirs(parent, exist_ok=True)
                 with open(self.file_path, "w") as f:
                     f.write("")
-        self.code_area = CodeEditor.code_editor(tab_id=self.tab_id, file=self.file_path, language="python", classes="editor", id=self.newid)
+        self.code_area = CodeEditor.code_editor(tab_id=self.tab_id, file=self.file_path, classes="editor", id=self.newid)
         self.code_area.indent_type = "spaces"
         self.code_area.indent_width = 4
         self.code_area.show_line_numbers = True

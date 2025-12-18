@@ -21,6 +21,7 @@ from utils.add_languages import register_supported_languages
 from ui.lsp_mixin import LSPMixin
 from ui.key_handlers import KeyHandlersMixin
 from core.paths import LOG_FILE_STR
+from core.languages import get_language_for_file
 
 logging.basicConfig(
     filename=LOG_FILE_STR,
@@ -94,6 +95,13 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
 
     async def on_mount(self):
         """Initialize the editor when mounted."""
+        # Auto-detect language from file extension
+        if self.file_path and self.language is None:
+            detected_lang = get_language_for_file(self.file_path)
+            if detected_lang and detected_lang in self.available_languages:
+                self.language = detected_lang
+                logging.info(f"Auto-detected language: {detected_lang} for {self.file_path}")
+
         await self._init_lsp()
 
         if self.file_path:

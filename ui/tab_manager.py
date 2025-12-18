@@ -15,6 +15,7 @@ import logging
 from ui.editor_view import EditorView
 from ui.tab import Tab
 from ui.tab_navigation import TabNavigationMixin
+from ui.run_button import RunButton
 from commands.messages import (
     WorkspaceRemoveTab, WorkspaceNextTab, UseFile,
     EditorDirtyFile, EditorSaveFile, EditorUndo, EditorRedo
@@ -116,6 +117,8 @@ class TabManager(TabNavigationMixin, Container):
         """Initialize the tab bar and existing tabs."""
         self.tab_bar = Horizontal(id="tab_bar")
         self.mount(self.tab_bar)
+        self.run_button = RunButton(id="run_button")
+        self.tab_bar.mount(self.run_button)
 
         if self.tabs:
             self.tabs = {str(k): v for k, v in self.tabs.items()}

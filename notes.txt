@@ -1,14 +1,17 @@
-need to fix files showing as dirty when first opening
-need to add select interpreter for command palette to select the syntax highlighting
+add a run button at the top right of the tab bar / in command palette - takes the language and maps it to a run file command - DONE
 
-could do with a bit of polish
+add none to language map - DONE
 
-everything else works!
+plugins 
 
-this was wrote in mt-code!
+need to implement a rename file on f2 and command palette
 
-fix terminal prompt deletion
+maybe a better terminal - autocompletion with oh-my-zsh if the user has it installed?
 
-change buffer size on the terminal textarea
+custom binds for the user to pick/change already existing
+have users able to bind keys to either bash commands or command palette commands
 
-open folders and have the files listed on the left with DirectoryTree() class
+need a custom bash command "open" in the .zshrc used in the config that hooks into the currently running mt-code process with that terminal and sends it a command to open a file
+for example - open test.py
+fires a message to the workspace in the same instance and it attempts to open test.py or create the file
+

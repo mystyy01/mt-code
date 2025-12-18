@@ -7,6 +7,7 @@ from the command palette or keyboard shortcuts.
 import logging
 from tree_sitter_language_pack import get_language
 from core.paths import LOG_FILE_STR
+from core.languages import get_run_command
 
 from commands.messages import (
     WorkspaceNewTab, EditorUndo, EditorRedo, WorkspaceRemoveTab
@@ -47,6 +48,7 @@ class WorkspaceCommandsMixin:
             "find": self.cmd_find,
             "go_to_line": self.cmd_go_to_line,
             "select_syntax": self.cmd_select_syntax,
+            "run_file": self.cmd_run_file,
             "git_add_commit_push": self.cmd_git_add_commit_push,
             "git_add": self.cmd_git_add,
             "git_commit": self.cmd_git_commit,
@@ -137,7 +139,7 @@ class WorkspaceCommandsMixin:
         logging.info("Selecting syntax")
         syntaxes = list(self.tab_manager.get_active_editor().code_area.available_languages)
         logging.info(len(syntaxes))
-        available = []
+        available = ["none"]  # Add none option to disable syntax highlighting
         for name in syntaxes:
             try:
                 get_language(name)
@@ -146,6 +148,30 @@ class WorkspaceCommandsMixin:
                 pass
 
         self.mount(SelectSyntax(available))
+
+    def cmd_run_file(self, **kwargs):
+        """Run the current file in the terminal."""
+        editor = self.tab_manager.get_active_editor()
+        if not editor or not editor.file_path:
+            logging.info("No file to run")
+            return
+
+        # Save file first
+        editor.code_area.save_file()
+
+        # Get run command for this file type
+        run_cmd = get_run_command(editor.file_path)
+        if not run_cmd:
+            logging.info(f"No run command for: {editor.file_path}")
+            return
+
+        # Replace {file} placeholder with actual path
+        cmd = run_cmd.format(file=editor.file_path)
+        logging.info(f"Running: {cmd}")
+
+        # Send command to terminal
+        self.terminal.run_command(cmd)
+        self.terminal.focus()
 
     # === UI Commands ===
 
@@ -194,6 +220,7 @@ class WorkspaceCommandsMixin:
     def get_command_palette_commands(self):
         """Return the command palette command definitions."""
         return {
+            "Run File": "run_file",
             "Open File": "open_file",
             "Create File": "create_file",
             "Quit": "quit_app",
