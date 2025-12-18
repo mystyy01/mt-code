@@ -17,8 +17,12 @@ class OpenFilePopup(Overlay):
         Binding("tab", "auto_complete", "Auto-complete file/folder", priority=True)
     ]
 
+    def __init__(self, root_dir: str = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._initial_root_dir = root_dir
+
     def on_mount(self):
-        self.root_dir = os.getcwd()
+        self.root_dir = self._initial_root_dir or os.getcwd()
         self.cwd = self.root_dir
         self.search_text = ""
         self.file_options = []
@@ -97,8 +101,10 @@ class OpenFilePopup(Overlay):
 
     async def on_input_submitted(self, event: Input.Submitted):
         if "open_file" in event.input.classes:
-            self.file_path = event.input.value
-            self.post_message(FilePathProvided(self.file_path))
+            # Resolve path relative to root_dir, not cwd
+            relative_path = event.input.value
+            absolute_path = os.path.normpath(os.path.join(self.root_dir, relative_path))
+            self.post_message(FilePathProvided(absolute_path))
             self.remove()
 
     def action_auto_complete(self):

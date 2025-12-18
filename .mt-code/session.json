@@ -1,17 +1,9 @@
 {
   "open_tabs": [
     {
-      "file_path": "/mnt/ssd/Coding/mt-code/commands/messages.py",
-      "is_active": false
-    },
-    {
-      "file_path": "/mnt/ssd/Coding/mt-code/utils/add_languages.py",
+      "file_path": "/mnt/ssd/Coding/mt-code/app.py",
       "is_active": true
-    },
-    {
-      "file_path": "/mnt/ssd/Coding/mt-code/ui/plugins_overlay.py",
-      "is_active": false
     }
   ],
-  "active_tab_path": "/mnt/ssd/Coding/mt-code/utils/add_languages.py"
+  "active_tab_path": "/mnt/ssd/Coding/mt-code/app.py"
 }

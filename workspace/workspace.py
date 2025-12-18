@@ -56,6 +56,36 @@ class Workspace(WorkspaceCommandsMixin, Container):
         """Check if any open files have unsaved changes."""
         return self.tab_manager.has_dirty_files()
 
+    def change_workspace_dir(self, new_path: str):
+        """Change the workspace directory.
+
+        Updates the project root, folder view, session, and git repo.
+
+        Args:
+            new_path: The new directory path
+        """
+        abs_path = str(Path(new_path).resolve())
+        if not os.path.isdir(abs_path):
+            logging.warning(f"Cannot change workspace dir to non-directory: {abs_path}")
+            return
+
+        self.project_root = abs_path
+
+        # Update folder view
+        if self.folder_view:
+            self.folder_view.path = abs_path
+
+        # Update session to use new directory
+        self.session = Session(abs_path)
+
+        # Update git repo for workspace and tab manager
+        self.repo = get_repo.get_repo(abs_path)
+        if hasattr(self, 'tab_manager') and self.tab_manager:
+            self.tab_manager.repo = self.repo
+            self.tab_manager.session = self.session
+
+        logging.info(f"Changed workspace directory to: {abs_path}")
+
     def on_mount(self):
         """Initialize workspace components on mount."""
         # Try to restore tabs from session
@@ -123,7 +153,7 @@ class Workspace(WorkspaceCommandsMixin, Container):
 
     def on_workspace_new_tab(self, event: WorkspaceNewTab):
         """Handle request to open a new tab."""
-        self.open_file_popup = OpenFilePopup()
+        self.open_file_popup = OpenFilePopup(root_dir=self.project_root)
         self.mount(self.open_file_popup)
 
     def on_app_next_tab(self, event: AppNextTab):
@@ -135,8 +165,9 @@ class Workspace(WorkspaceCommandsMixin, Container):
         """Handle file path provided from open dialog."""
         # Resolve to absolute path for LSP URI compatibility
         abs_path = str(Path(event.file_path).resolve())
-        # Ignore directories - only open files
+        # If directory selected, change workspace directory
         if os.path.isdir(abs_path):
+            self.change_workspace_dir(abs_path)
             return
         if self.tab_manager.tabs:
             max_id = max(int(tab_id) for tab_id in self.tab_manager.tabs.keys())
