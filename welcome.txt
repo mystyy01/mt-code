@@ -1,0 +1,48 @@
+Welcome to mt-code!
+====================
+
+A terminal-based code editor with LSP support.
+
+
+KEYBINDS
+--------
+
+File Operations:
+  Ctrl+O / Ctrl+N    Open file / New tab
+  Ctrl+S             Save file
+  Ctrl+W             Close current tab
+  Ctrl+Q             Quit
+
+Navigation:
+  Shift+Tab          Switch between tabs
+  Ctrl+E             Focus editor
+  Ctrl+T             Focus terminal
+  Ctrl+R             Focus file explorer
+
+Editing:
+  Ctrl+A             Select all
+  Ctrl+F             Find and replace
+  Ctrl+Space         Trigger autocomplete
+  Tab                Accept autocomplete / Insert spaces
+
+Command Palette:
+  Ctrl+P             Open command palette
+  Tab                Auto-complete command
+
+Terminal:
+  Ctrl+C             Send interrupt signal
+  Ctrl+D             Send EOF
+
+
+FEATURES
+--------
+
+- Syntax highlighting for multiple languages
+- Python LSP (Pyright) for autocompletions
+- Integrated terminal
+- Git integration (add, commit, push)
+- File explorer sidebar
+- Tab-based editing
+
+
+Happy coding!
