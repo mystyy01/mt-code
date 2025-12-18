@@ -4,9 +4,21 @@ Screen {
     layout: horizontal;
 }
 
-#tab_bar{
-    dock:top;
+#tab_bar {
+    dock: top;
     height: 3;
+    width: 100%;
+}
+
+#tab_scroll {
+    width: 1fr;
+    height: 100%;
+    scrollbar-size: 0 0;
+}
+
+#run_button {
+    width: auto;
+    min-width: 6;
 }
 
 .overlay {
@@ -136,4 +148,28 @@ TerminalContainer{
 
 .bottom_buttons {
     align: center middle;
+}
+
+/* Plugin overlay styles */
+.plugin_list {
+    height: 50%;
+    width: 100%;
+}
+
+#plugin_info {
+    height: auto;
+    max-height: 30%;
+    padding: 1;
+    border: solid $primary;
+    margin: 1 0;
+}
+
+.plugin_buttons {
+    height: auto;
+    align: center middle;
+    padding: 1;
+}
+
+.plugin_btn {
+    margin: 0 1;
 }

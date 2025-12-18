@@ -153,7 +153,7 @@ class Terminal(TextArea):
             return
         if not self.master_fd:
             return
-
+        
         key = event.key
         logging.info(f"Key pressed: {repr(key)}")
 

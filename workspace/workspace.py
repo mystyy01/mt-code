@@ -16,7 +16,8 @@ from core.paths import LOG_FILE_STR
 from commands.messages import (
     FilePathProvided, WorkspaceNewTab, WorkspaceNextTab, AppNextTab,
     CommandPaletteCommand, OpenCommandPalette, FocusEditor,
-    SelectSyntaxEvent, GitCommitMessageSubmitted, LineInputSubmitted, TabMessage
+    SelectSyntaxEvent, GitCommitMessageSubmitted, LineInputSubmitted, TabMessage,
+    RenameFileProvided
 )
 from ui.open_file import OpenFilePopup
 from ui.tab_manager import TabManager
@@ -28,6 +29,8 @@ from ui.folder_view import FolderView
 from ui.run_button import RunButtonPressed
 from git_utils import get_repo, git_actions
 from workspace.workspace_commands import WorkspaceCommandsMixin
+from core.plugin_manager import PluginManager
+from core.session import Session
 
 logging.basicConfig(
     filename=LOG_FILE_STR,
@@ -39,11 +42,14 @@ logging.basicConfig(
 class Workspace(WorkspaceCommandsMixin, Container):
     """Main workspace container managing tabs, terminal, and commands."""
 
-    def __init__(self, folder_view: FolderView | None = None, file_path_passed="", *args, **kwargs):
+    def __init__(self, folder_view: FolderView | None = None, file_path_passed="", project_root=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.repo = get_repo.get_repo(os.getcwd())
         self.file_path_passed = file_path_passed
         self.folder_view = folder_view
+        self.project_root = project_root or os.getcwd()
+        self.session = Session(self.project_root)
+        self.plugin_manager = PluginManager(app=self)
         self._init_command_map()
 
     def has_got_dirty_files(self):
@@ -52,17 +58,56 @@ class Workspace(WorkspaceCommandsMixin, Container):
 
     def on_mount(self):
         """Initialize workspace components on mount."""
+        # Try to restore tabs from session
+        session_tabs = self.session.get_tab_paths()
+        active_tab_path = self.session.get_active_tab_path()
+
+        # Pre-filter session tabs to only include existing files
+        valid_session_paths = [p for p in session_tabs if os.path.exists(p)]
+
+        # Log any removed files
+        for p in session_tabs:
+            if p not in valid_session_paths:
+                logging.info(f"Session file no longer exists, skipping: {p}")
+
+        # Build tabs dict and determine active tab
         tabs = {}
+        active_tab_id = None
+
         if self.file_path_passed != "":
-            tabs.update({"0": EditorView(file_path=self.file_path_passed, classes="editor-view")})
+            # A specific file was passed as argument - open it
+            tabs["0"] = EditorView(file_path=self.file_path_passed, classes="editor-view")
+            active_tab_id = "0"
+        elif valid_session_paths:
+            # Restore tabs from session
+            for i, file_path in enumerate(valid_session_paths):
+                tab_id = str(i)
+                tabs[tab_id] = EditorView(file_path=file_path, classes="editor-view")
+                if file_path == active_tab_path:
+                    active_tab_id = tab_id
+            # Clean up session if some files were removed
+            if len(valid_session_paths) < len(session_tabs):
+                self.session.save_tab_state(valid_session_paths, active_tab_path if active_tab_path in valid_session_paths else None)
         else:
-            tabs.update({"0": EditorView()})
-        self.tab_manager = TabManager(tabs, repo=self.repo)
+            # No session, create empty tab
+            tabs["0"] = EditorView(file_path="", classes="editor-view")
+            active_tab_id = "0"
+
+        self.tab_manager = TabManager(
+            tabs=tabs,
+            repo=self.repo,
+            session=self.session,
+            active_tab_id=active_tab_id
+        )
         self.mount(self.tab_manager)
+
         self.terminal = Terminal("/bin/zsh", "> ")
         self.terminal_container = TerminalContainer(terminal=self.terminal)
         self.mount(self.terminal_container)
         self.focus()
+
+        # Load plugins
+        self.plugin_manager.load_all_plugins()
 
     def on_run_button_pressed(self, event: RunButtonPressed):
         """Handle run button press."""
@@ -88,6 +133,11 @@ class Workspace(WorkspaceCommandsMixin, Container):
 
     def on_file_path_provided(self, event: FilePathProvided):
         """Handle file path provided from open dialog."""
+        # Resolve to absolute path for LSP URI compatibility
+        abs_path = str(Path(event.file_path).resolve())
+        # Ignore directories - only open files
+        if os.path.isdir(abs_path):
+            return
         if self.tab_manager.tabs:
             max_id = max(int(tab_id) for tab_id in self.tab_manager.tabs.keys())
         else:
@@ -95,13 +145,45 @@ class Workspace(WorkspaceCommandsMixin, Container):
         next_id = str(max_id + 1)
         prev_file_path = self.tab_manager.get_active_editor().file_path
         prev_file_editor = self.tab_manager.get_active_editor()
-        # Resolve to absolute path for LSP URI compatibility
-        abs_path = str(Path(event.file_path).resolve())
         self.new_tab(abs_path, next_id)
         # Replace empty unsaved files with the new file opened
         if prev_file_path == "" and prev_file_editor.code_area.text.strip() == "":
             self.tab_manager.remove_tab(prev_file_editor.tab_id)
         logging.info(self.tab_manager.tabs)
+
+    def on_rename_file_provided(self, event: RenameFileProvided):
+        """Handle file rename request."""
+        old_path = str(Path(event.old_path).resolve())
+        new_path = str(Path(event.new_path).resolve())
+
+        # Skip if paths are the same
+        if old_path == new_path:
+            return
+
+        # Rename the file on disk
+        try:
+            # Ensure parent directory exists for new path
+            parent = os.path.dirname(new_path)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
+            os.rename(old_path, new_path)
+        except OSError as e:
+            logging.error(f"Failed to rename file: {e}")
+            return
+
+        # Update the active editor with the new path
+        editor = self.tab_manager.get_active_editor()
+        if editor and editor.file_path == old_path:
+            editor.file_path = new_path
+            editor.code_area.file_path = new_path
+
+            # Update the tab label
+            from ui.tab import Tab
+            tab_widget = self.tab_manager.tab_bar.query_one(f"#t{editor.tab_id}")
+            if isinstance(tab_widget, Tab):
+                tab_widget.label = self.tab_manager.make_relative(new_path)
+
+        logging.info(f"Renamed file from {old_path} to {new_path}")
 
     # === Command Palette ===
 

@@ -7,7 +7,7 @@ This module provides the TabManager class which handles:
 - File dirty state tracking
 """
 
-from textual.containers import Container, Horizontal
+from textual.containers import Container, Horizontal, HorizontalScroll
 from textual.widgets import Button
 from pathlib import Path
 import logging
@@ -34,15 +34,17 @@ logging.basicConfig(
 class TabManager(TabNavigationMixin, Container):
     """Manages editor tabs and the tab bar UI."""
 
-    def __init__(self, tabs: dict, repo: Repo, *args, **kwargs):
+    def __init__(self, tabs: dict, repo: Repo, session=None, active_tab_id: str = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.tabs = tabs
         self.repo = repo
+        self.session = session
+        self.initial_active_tab_id = active_tab_id  # Tab to activate on mount
         # Keep an ordered list of currently mounted tab ids (strings)
         self.tab_order: list[str] = []
         # Monotonic counter for allocating new tab ids within a session
         self.next_tab_id = 0
-        logging.info(tabs)
+        logging.info(f"TabManager initialized with {len(tabs)} tabs")
 
     # === Path Utilities ===
 
@@ -111,41 +113,68 @@ class TabManager(TabNavigationMixin, Container):
                 return True
         return False
 
+    def save_session(self):
+        """Save current tab state to session."""
+        if not self.session:
+            return
+
+        # Get all tab file paths in order
+        tab_paths = []
+        for tab_id in self.tab_order:
+            editor = self.tabs.get(tab_id)
+            if editor and editor.file_path:
+                tab_paths.append(editor.file_path)
+
+        # Get active tab path
+        active_path = None
+        active_editor = self.get_active_editor()
+        if active_editor and active_editor.file_path:
+            active_path = active_editor.file_path
+
+        self.session.save_tab_state(tab_paths, active_path)
+        logging.info(f"Saved session with {len(tab_paths)} tabs")
+
     # === Tab Operations ===
 
     def on_mount(self):
         """Initialize the tab bar and existing tabs."""
-        self.tab_bar = Horizontal(id="tab_bar")
-        self.mount(self.tab_bar)
-        self.run_button = RunButton(id="run_button")
-        self.tab_bar.mount(self.run_button)
+        # Wrapper container for the whole tab bar area
+        self.tab_bar_container = Horizontal(id="tab_bar")
+        self.mount(self.tab_bar_container)
 
+        # Scrollable container for tabs only
+        self.tab_bar = HorizontalScroll(id="tab_scroll")
+        self.tab_bar_container.mount(self.tab_bar)
+
+        # Run button stays fixed outside the scrollable area
+        self.run_button = RunButton(id="run_button")
+        self.tab_bar_container.mount(self.run_button)
+
+        # Set up tab order and next_tab_id
         if self.tabs:
             self.tabs = {str(k): v for k, v in self.tabs.items()}
-            try:
-                max_id = max(int(k) for k in self.tabs.keys())
-                self.next_tab_id = max_id + 1
-            except Exception:
-                self.next_tab_id = 0
-            self.tab_order = [str(k) for k in self.tabs.keys()]
-            self.active_tab = "0" if "0" in self.tabs else (self.tab_order[0] if self.tab_order else None)
-            logging.info(self.tabs)
-            if self.active_tab and self.active_tab in self.tabs:
-                logging.info((self.tabs[self.active_tab]).file_path)
+            self.tab_order = list(self.tabs.keys())
+            self.next_tab_id = len(self.tabs)
+            # Set active tab - prefer initial_active_tab_id, else first tab
+            if self.initial_active_tab_id and self.initial_active_tab_id in self.tabs:
+                self.active_tab = self.initial_active_tab_id
+            else:
+                self.active_tab = self.tab_order[0]
         else:
             self.active_tab = None
 
+        # Add all tabs to the tab bar (but don't mount them yet)
         for tab_id, editor in self.tabs.items():
-            if tab_id == self.active_tab:
-                self.add_tab(tab_id, editor, first_tabs=True)
-            else:
-                logging.info(tab_id, editor)
-                self.add_tab(tab_id, editor, first_tabs=True)
+            self.add_tab(tab_id, editor, first_tabs=True)
 
-        if self.tabs[self.active_tab]:
-            if self.active_tab and self.active_tab in self.tabs and self.tabs[self.active_tab]:
-                logging.info(self.active_tab, self.tabs[self.active_tab])
-                self.mount(self.tabs[self.active_tab])
+        # Mount only the active editor and mark its tab as selected
+        if self.active_tab and self.active_tab in self.tabs:
+            self.mount(self.tabs[self.active_tab])
+            # Enable all tab buttons except the active one
+            for tab_id in self.tabs:
+                tab_btn = self.tab_bar.query_one(f"#t{tab_id}")
+                tab_btn.disabled = (tab_id == self.active_tab)
+            logging.info(f"Mounted active tab: {self.active_tab}")
 
     def add_tab(self, tab_id: str, editor: EditorView, first_tabs=False):
         """Add a new tab with the given editor."""
@@ -155,12 +184,20 @@ class TabManager(TabNavigationMixin, Container):
             logging.info("adding second tab")
         self.tabs.update({tab_id: editor})
         self.add_to_tab_bar(tab_id, editor)
-        if not editor.is_mounted:
-            self.mount(editor)
-        if not first_tabs:
-            self.tab_bar.query_one(f"#t{tab_id}").press()
-        else:
+
+        if first_tabs:
+            # During initial load, don't mount editors - only the active one will be mounted
             self.tab_bar.query_one(f"#t{tab_id}").disabled = True
+        else:
+            # For new tabs added at runtime, mount and switch to it
+            if not editor.is_mounted:
+                self.mount(editor)
+            tab_widget = self.tab_bar.query_one(f"#t{tab_id}")
+            tab_widget.press()
+            # Scroll to the new tab after layout updates
+            self.call_later(lambda: self.scroll_tab_to_left(tab_widget))
+            # Save session after adding new tab
+            self.call_later(self.save_session)
 
     def switch_tab(self, tab_id: str):
         """Switch to the specified tab."""
@@ -178,18 +215,36 @@ class TabManager(TabNavigationMixin, Container):
         if current_editor:
             current_editor.hide()
 
-        tab_editor.show()
+        # Mount the editor if not already mounted
+        if not tab_editor.is_mounted:
+            self.mount(tab_editor)
+        else:
+            tab_editor.show()
+
         self.active_tab = tab_id
 
         for tab in [c for c in self.tab_bar.children if isinstance(c, Button)]:
             tab.disabled = False
         tab_widget.disabled = True
 
+        # Scroll the selected tab to the left
+        self.scroll_tab_to_left(tab_widget)
+
         try:
             if hasattr(tab_editor, "code_area") and tab_editor.code_area:
                 tab_editor.code_area.focus()
         except Exception:
             logging.exception(f"Failed to focus editor for tab {tab_id}")
+
+        # Save session after switching tabs
+        self.save_session()
+
+    def scroll_tab_to_left(self, tab_widget):
+        """Scroll the tab bar so the given tab is at the left edge."""
+        try:
+            self.tab_bar.scroll_to_widget(tab_widget, animate=True)
+        except Exception:
+            logging.exception("Failed to scroll tab to left")
 
     def remove_tab(self, tab_id: str):
         """Remove the specified tab."""
@@ -227,6 +282,8 @@ class TabManager(TabNavigationMixin, Container):
                 pass
         else:
             self.active_tab = None
+            # Save session when no next tab (edge case)
+            self.save_session()
 
     def remove_editor(self, tab_id: str):
         """Remove the editor widget for a tab."""
@@ -323,6 +380,8 @@ class TabManager(TabNavigationMixin, Container):
             self.mount(new_editor)
             new_editor.code_area.focus()
             self.post_message(EditorSaveFile(tab_id=new_editor.tab_id))
+            # Save session after file change
+            self.save_session()
         except Exception:
             logging.exception("Failed mounting new editor for tab %s", active)
 

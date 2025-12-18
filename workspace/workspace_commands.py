@@ -17,6 +17,8 @@ from ui.select_syntax import SelectSyntax
 from ui.success_overlay import SuccessOverlay
 from ui.line_input import LineInput
 from ui.commit_message import GitCommitMessage
+from ui.rename_file import RenameFilePopup
+from ui.plugins_overlay import PluginsOverlay
 from git_utils import git_actions
 
 logging.basicConfig(
@@ -39,6 +41,7 @@ class WorkspaceCommandsMixin:
             "focus_editor": self.cmd_focus_editor,
             "save_file": self.cmd_save_file,
             "save_file_as": self.cmd_save_file_as,
+            "rename_file": self.cmd_rename_file,
             "close_tab": self.cmd_close_tab,
             "next_tab": self.cmd_next_tab,
             "previous_tab": self.cmd_previous_tab,
@@ -52,7 +55,8 @@ class WorkspaceCommandsMixin:
             "git_add_commit_push": self.cmd_git_add_commit_push,
             "git_add": self.cmd_git_add,
             "git_commit": self.cmd_git_commit,
-            "git_push": self.cmd_git_push
+            "git_push": self.cmd_git_push,
+            "edit_plugins": self.cmd_edit_plugins
         }
 
     def dispatch_command(self, command: str, **kwargs):
@@ -84,6 +88,14 @@ class WorkspaceCommandsMixin:
         """Save current file with new name."""
         print("Saving file as…")
         self.tab_manager.get_active_editor().code_area.save_as()
+
+    def cmd_rename_file(self, **kwargs):
+        """Rename current file."""
+        editor = self.tab_manager.get_active_editor()
+        if not editor or not editor.file_path:
+            logging.info("No file to rename")
+            return
+        self.mount(RenameFilePopup(current_path=editor.file_path))
 
     # === Tab Commands ===
 
@@ -211,6 +223,12 @@ class WorkspaceCommandsMixin:
         """Show the commit message input dialog."""
         self.mount(GitCommitMessage(message_id=id))
 
+    # === Plugin Commands ===
+
+    def cmd_edit_plugins(self, **kwargs):
+        """Open the plugins management overlay."""
+        self.mount(PluginsOverlay(plugin_manager=self.plugin_manager))
+
     # === Helper Methods ===
 
     def find_and_replace(self, editor):
@@ -233,6 +251,7 @@ class WorkspaceCommandsMixin:
             "Focus Editor": "focus_editor",
             "Save": "save_file",
             "Save As": "save_file_as",
+            "Rename File": "rename_file",
             "Close Current Tab": "close_tab",
             "Next Tab": "next_tab",
             "Previous Tab": "previous_tab",
@@ -241,4 +260,5 @@ class WorkspaceCommandsMixin:
             "Redo": "redo",
             "Find": "find",
             "Go To Line": "go_to_line",
+            "Edit Plugins": "edit_plugins",
         }

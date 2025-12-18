@@ -60,7 +60,11 @@ class TextualApp(App):
     def on_mount(self):
         self.confirm_exit = ConfirmExit()
         self.mount(self.folder_view)
-        self.workspace = Workspace(file_path_passed=file_path_passed, folder_view=self.folder_view)
+        self.workspace = Workspace(
+            file_path_passed=file_path_passed,
+            folder_view=self.folder_view,
+            project_root=self.cwd
+        )
         self.mount(self.workspace)
     def on_file_selected(self, event: FileSelected):
         self.workspace.post_message(FilePathProvided(str(event.path)))
@@ -93,6 +97,8 @@ class TextualApp(App):
         if event.key=="ctrl+k":
             # put whatever popup im testing here
             pass
+        if event.key=="f2":
+            self.workspace.cmd_rename_file()
     def on_resize(self, event: Resize):
         logging.info("resized terminal to " + str(event.size.width))
         width = int(event.size.width * 0.3)

@@ -90,8 +90,16 @@ class SaveAllFiles(Message):
         super().__init__()
 class CompletionSelected(Message):
     """Message sent when a completion is selected."""
-    
+
     def __init__(self, completion: dict):
         super().__init__()
         self.completion = completion
+
+class RenameFileProvided(Message):
+    """Message sent when a new file name is provided for renaming."""
+
+    def __init__(self, old_path: str, new_path: str):
+        super().__init__()
+        self.old_path = old_path
+        self.new_path = new_path
 

@@ -2,6 +2,10 @@
 
 A lightweight terminal-based code editor with LSP support.
 
+## Demo
+
+![Demo](demo.gif)
+
 ## Installation
 
 ```bash
