@@ -49,6 +49,10 @@ class KeyHandlersMixin:
         if self._handle_shift_backspace(event):
             return False  # Let parent handle modified event
 
+        # Handle backspace on whitespace-only prefix (dedent by one level)
+        if self._handle_indent_backspace(event):
+            return True
+
         # Handle auto-pairing
         if self._handle_auto_pair(event):
             return True
@@ -199,3 +203,37 @@ class KeyHandlersMixin:
             else:
                 break
         return count
+
+    def _handle_indent_backspace(self, event):
+        """Handle backspace to move cursor back one indent level when only whitespace before cursor."""
+        if event.key != "backspace":
+            return False
+
+        row, col = self.cursor_location
+        if col == 0:
+            return False
+
+        current_line = str(self.get_line(row))
+        text_before_cursor = current_line[:col]
+
+        # Only handle if text before cursor is all whitespace
+        if not text_before_cursor.isspace():
+            return False
+
+        indent_unit = getattr(self, "indent_width", 4)
+
+        # Calculate target column (previous indent level)
+        remainder = col % indent_unit
+        if remainder == 0:
+            target_col = col - indent_unit
+        else:
+            target_col = col - remainder
+
+        # Don't go below 0, and adjust for 0-indexing
+        target_col = max(0, target_col + 1)
+
+        # Delete the whitespace and move cursor
+        self.replace("", start=(row, target_col), end=(row, col))
+
+        event.prevent_default()
+        return True

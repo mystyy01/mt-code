@@ -40,7 +40,7 @@ fires a message to the workspace in the same instance and it attempts to open te
 │   305                                                                                          ╰────────────────────────────────────────────╯     │
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 AttributeError: 'EditorView' object has no attribute 'code_area'
-
+ 
 fix that
 
 fix issue where autocomplete doesnt split the word properly if its in brackets or before a dot causing it to append instead of overwrite what you already have!

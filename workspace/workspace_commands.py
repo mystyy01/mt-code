@@ -19,6 +19,7 @@ from ui.line_input import LineInput
 from ui.commit_message import GitCommitMessage
 from ui.rename_file import RenameFilePopup
 from ui.plugins_overlay import PluginsOverlay
+from ui.keybindings_overlay import KeybindingsOverlay
 from git_utils import git_actions
 
 logging.basicConfig(
@@ -56,7 +57,9 @@ class WorkspaceCommandsMixin:
             "git_add": self.cmd_git_add,
             "git_commit": self.cmd_git_commit,
             "git_push": self.cmd_git_push,
-            "edit_plugins": self.cmd_edit_plugins
+            "edit_plugins": self.cmd_edit_plugins,
+            "edit_keybindings": self.cmd_edit_keybindings,
+            "command_palette": self.cmd_command_palette
         }
 
     def dispatch_command(self, command: str, **kwargs):
@@ -229,6 +232,14 @@ class WorkspaceCommandsMixin:
         """Open the plugins management overlay."""
         self.mount(PluginsOverlay(plugin_manager=self.plugin_manager))
 
+    def cmd_edit_keybindings(self, **kwargs):
+        """Open the keybindings editor overlay."""
+        self.mount(KeybindingsOverlay())
+
+    def cmd_command_palette(self, **kwargs):
+        """Open the command palette."""
+        self.open_command_palette()
+
     # === Helper Methods ===
 
     def find_and_replace(self, editor):
@@ -261,4 +272,5 @@ class WorkspaceCommandsMixin:
             "Find": "find",
             "Go To Line": "go_to_line",
             "Edit Plugins": "edit_plugins",
+            "Edit Keybindings": "edit_keybindings",
         }

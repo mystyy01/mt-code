@@ -120,13 +120,65 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
             self._completion_task = asyncio.create_task(self._debounced_completions())
 
     async def on_tab_message(self, message: TabMessage):
-        """Handle tab key press for completion insertion."""
-        logging.info("code_editor received tab")
+        """Handle tab key press for completion insertion or indentation."""
+        logging.info(f"code_editor received tab (shift={message.shift})")
+
+        # Check if there's an actual selection (not just cursor position)
+        selection = self.selection
+        has_selection = selection.start != selection.end
+
+        if has_selection:
+            # Selection exists: indent or dedent selected lines
+            self._indent_selection(dedent=message.shift)
+            message.stop()
+            return
+
+        # No selection
+        if message.shift:
+            # Shift+tab without selection: cycle tabs
+            # Don't stop the message - let it bubble up, and post AppNextTab
+            from commands.messages import AppNextTab
+            self.post_message(AppNextTab())
+            message.stop()
+            return
+
+        # Normal tab behavior
         if self._handle_tab_completion():
             message.stop()
         else:
             self.insert("    ")
             message.stop()
+
+    def _indent_selection(self, dedent: bool = False):
+        """Indent or dedent all lines in the current selection."""
+        selection = self.selection
+        start_row = min(selection.start[0], selection.end[0])
+        end_row = max(selection.start[0], selection.end[0])
+        indent_str = " " * getattr(self, "indent_width", 4)
+
+        # Process lines from bottom to top to preserve line numbers
+        for row in range(end_row, start_row - 1, -1):
+            line = str(self.get_line(row))
+
+            if dedent:
+                # Remove one level of indentation
+                if line.startswith(indent_str):
+                    new_line = line[len(indent_str):]
+                    self.replace(new_line, start=(row, 0), end=(row, len(line)))
+                elif line.startswith(" "):
+                    # Remove as many spaces as possible up to indent_width
+                    spaces_to_remove = 0
+                    for char in line:
+                        if char == " " and spaces_to_remove < len(indent_str):
+                            spaces_to_remove += 1
+                        else:
+                            break
+                    new_line = line[spaces_to_remove:]
+                    self.replace(new_line, start=(row, 0), end=(row, len(line)))
+            else:
+                # Add one level of indentation
+                new_line = indent_str + line
+                self.replace(new_line, start=(row, 0), end=(row, len(line)))
 
     def change_language(self, language: str | None) -> None:
         """Change the syntax highlighting language."""

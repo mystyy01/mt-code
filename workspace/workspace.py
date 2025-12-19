@@ -31,6 +31,7 @@ from git_utils import get_repo, git_actions
 from workspace.workspace_commands import WorkspaceCommandsMixin
 from core.plugin_manager import PluginManager
 from core.session import Session
+from core.keybindings import get_keybindings_manager
 
 logging.basicConfig(
     filename=LOG_FILE_STR,
@@ -51,10 +52,31 @@ class Workspace(WorkspaceCommandsMixin, Container):
         self.session = Session(self.project_root)
         self.plugin_manager = PluginManager(app=self)
         self._init_command_map()
+        self._init_keybindings()
 
     def has_got_dirty_files(self):
         """Check if any open files have unsaved changes."""
         return self.tab_manager.has_dirty_files()
+
+    def _init_keybindings(self):
+        """Initialize the keybindings manager."""
+        self.keybindings = get_keybindings_manager()
+        self.keybindings.set_dispatcher(self.dispatch_command)
+        self.keybindings.set_bash_executor(self._execute_bash_keybinding)
+
+    def _execute_bash_keybinding(self, command: str):
+        """Execute a bash command from a keybinding."""
+        if hasattr(self, 'terminal') and self.terminal:
+            # Replace placeholders
+            editor = self.tab_manager.get_active_editor()
+            if editor and editor.file_path:
+                command = command.replace("%file%", editor.file_path)
+                command = command.replace("%dir%", str(Path(editor.file_path).parent))
+            self.terminal.run_command(command)
+
+    def handle_keybinding(self, key: str) -> bool:
+        """Handle a key press via keybindings. Returns True if handled."""
+        return self.keybindings.execute_binding(key)
 
     def change_workspace_dir(self, new_path: str):
         """Change the workspace directory.
@@ -169,6 +191,15 @@ class Workspace(WorkspaceCommandsMixin, Container):
         if os.path.isdir(abs_path):
             self.change_workspace_dir(abs_path)
             return
+
+        # Check if file is already open in an existing tab
+        existing_tab_id = self.tab_manager.find_tab_by_path(abs_path)
+        if existing_tab_id is not None:
+            # Switch to existing tab instead of opening a new one
+            self.tab_manager.switch_tab(existing_tab_id)
+            logging.info(f"Switched to existing tab for: {abs_path}")
+            return
+
         if self.tab_manager.tabs:
             max_id = max(int(tab_id) for tab_id in self.tab_manager.tabs.keys())
         else:
@@ -290,7 +321,7 @@ class Workspace(WorkspaceCommandsMixin, Container):
             pass
         try:
             if self.tab_manager.get_active_editor().code_area.has_focus:
-                self.tab_manager.get_active_editor().code_area.post_message(TabMessage())
+                self.tab_manager.get_active_editor().code_area.post_message(TabMessage(shift=event.shift))
             else:
                 pass
         except Exception:
@@ -300,5 +331,5 @@ class Workspace(WorkspaceCommandsMixin, Container):
         """Save all open files."""
         for tab in self.tab_manager.tabs.keys():
             editor = self.tab_manager.tabs[tab]
-            if editor.file_path:
+            if editor.file_path and hasattr(editor, 'code_area') and editor.code_area:
                 editor.code_area.save_file()

@@ -1,13 +1,49 @@
 {
   "open_tabs": [
     {
-      "file_path": "/mnt/ssd/Coding/mt-code/.gitignore",
+      "file_path": "/mnt/ssd/Coding/mt-code/example.py",
       "is_active": false
     },
     {
-      "file_path": "/mnt/ssd/Coding/mt-code/lsp/pyright.py",
+      "file_path": "/mnt/ssd/Coding/mt-code/notes.txt",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/commands/messages.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/ui/keybindings_overlay.py",
       "is_active": true
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/workspace/workspace_commands.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/ui/command_palette.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/app.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/workspace/workspace.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/ui/overlay.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/config/.zshrc",
+      "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/config/app.tcss",
+      "is_active": false
     }
   ],
-  "active_tab_path": "/mnt/ssd/Coding/mt-code/lsp/pyright.py"
+  "active_tab_path": "/mnt/ssd/Coding/mt-code/ui/keybindings_overlay.py"
 }

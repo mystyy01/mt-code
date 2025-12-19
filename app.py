@@ -46,8 +46,8 @@ class TextualApp(App):
         # Kill default focus navigation
         Binding("tab", "custom_tab", show=False, priority=True),
 
-        # Cycle tabs
-        Binding("shift+tab", "switch_tab", show=False, priority=True),
+        # Shift+tab for dedent
+        Binding("shift+tab", "custom_shift_tab", show=False, priority=True),
         Binding("ctrl+q", "confirm_quit", show=False, priority=True)
     ]
     def action_confirm_quit(self):
@@ -76,7 +76,17 @@ class TextualApp(App):
         if self.confirm_exit.is_mounted:
             self.confirm_exit.post_message(TabMessage())
             return
+
+    def action_custom_shift_tab(self):
+        self.workspace.post_message(TabMessage(shift=True))
     def on_key(self, event: events.Key):
+        # Try custom keybindings first
+        if hasattr(self, 'workspace') and self.workspace.handle_keybinding(event.key):
+            event.prevent_default()
+            event.stop()
+            return
+
+        # Fallback to hardcoded bindings (for backwards compatibility)
         if event.key=="ctrl+n" or event.key=="ctrl+o":
             self.workspace.post_message(WorkspaceNewTab())
         if event.key=="ctrl+w":

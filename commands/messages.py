@@ -75,8 +75,9 @@ class LineInputSubmitted(Message):
         self.line = line
         self.kwargs = kwargs
 class TabMessage(Message):
-    def __init__(self):
+    def __init__(self, shift: bool = False):
         super().__init__()
+        self.shift = shift
 class FileSelected(Message):
     def __init__(self, path):
         super().__init__()

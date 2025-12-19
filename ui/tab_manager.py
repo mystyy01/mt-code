@@ -105,6 +105,16 @@ class TabManager(TabNavigationMixin, Container):
         self.next_tab_id += 1
         return nid
 
+    def find_tab_by_path(self, file_path: str) -> str | None:
+        """Find a tab by its absolute file path. Returns tab_id or None."""
+        abs_path = str(Path(file_path).resolve())
+        for tab_id, editor in self.tabs.items():
+            if editor.file_path:
+                editor_abs_path = str(Path(editor.file_path).resolve())
+                if editor_abs_path == abs_path:
+                    return tab_id
+        return None
+
     def has_dirty_files(self):
         """Check if any tabs have unsaved changes."""
         for tab_id in self.tab_order:

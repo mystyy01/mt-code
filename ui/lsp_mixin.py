@@ -229,6 +229,9 @@ class LSPMixin:
             label = completion.get("label", "")
             insert_text = completion.get("insertText", label)
 
+            # Log the full completion item to understand auto-import structure
+            logging.info(f"Full completion item: {completion}")
+
             line, col = self.cursor_location
             current_line = str(self.get_line(line))
             text_before_cursor = current_line[:col]
@@ -248,9 +251,113 @@ class LSPMixin:
                 self.insert(insert_text)
                 logging.info(f"Tab completion: inserted '{insert_text}'")
 
+            # Handle auto-imports
+            self._handle_auto_import(completion)
+
             self._close_completions_overlay()
             return True
         return False
+
+    def _handle_auto_import(self, completion):
+        """Handle auto-import by adding import statement at the top of the file."""
+        label = completion.get("label", "")
+        label_details = completion.get("labelDetails", {})
+        description = label_details.get("description", "") if label_details else ""
+
+        # Check if this is an auto-import completion
+        is_auto_import = (
+            label.endswith("- Auto-import") or
+            "Auto-import" in description or
+            completion.get("additionalTextEdits")
+        )
+
+        if not is_auto_import:
+            return
+
+        logging.info(f"Handling auto-import for: {label}")
+
+        # Check for additionalTextEdits (standard LSP way)
+        additional_edits = completion.get("additionalTextEdits", [])
+        if additional_edits:
+            logging.info(f"Additional text edits: {additional_edits}")
+            for edit in additional_edits:
+                self._apply_text_edit(edit)
+            return
+
+        # Fallback: parse the description to construct import statement
+        # Description is typically like "(from module_name)"
+        if description and description.startswith("(") and description.endswith(")"):
+            # Extract module path, e.g., "(from os.path)" -> "os.path"
+            import_source = description[1:-1]  # Remove parentheses
+            if import_source.startswith("from "):
+                module = import_source[5:]  # Remove "from "
+                # Get the actual symbol name (remove "- Auto-import" suffix if present)
+                symbol = label.replace(" - Auto-import", "").strip()
+                import_statement = f"from {module} import {symbol}\n"
+                self._add_import_to_file(import_statement)
+
+    def _apply_text_edit(self, edit):
+        """Apply a single LSP text edit."""
+        try:
+            range_info = edit.get("range", {})
+            start = range_info.get("start", {})
+            end = range_info.get("end", {})
+            new_text = edit.get("newText", "")
+
+            start_loc = (start.get("line", 0), start.get("character", 0))
+            end_loc = (end.get("line", 0), end.get("character", 0))
+
+            logging.info(f"Applying text edit: {start_loc} -> {end_loc}, text: {repr(new_text)}")
+            self.replace(new_text, start=start_loc, end=end_loc)
+        except Exception as e:
+            logging.error(f"Failed to apply text edit: {e}", exc_info=True)
+
+    def _add_import_to_file(self, import_statement):
+        """Add an import statement at the top of the file (after existing imports)."""
+        try:
+            # Find the best location to insert the import
+            lines = self.text.split("\n")
+            insert_line = 0
+
+            # Skip shebang, docstrings, and find the import section
+            in_docstring = False
+            docstring_char = None
+
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+
+                # Handle docstrings
+                if not in_docstring:
+                    if stripped.startswith('"""') or stripped.startswith("'''"):
+                        docstring_char = stripped[:3]
+                        if stripped.count(docstring_char) >= 2:
+                            # Single line docstring
+                            continue
+                        in_docstring = True
+                        continue
+                else:
+                    if docstring_char in stripped:
+                        in_docstring = False
+                    continue
+
+                # Skip comments and empty lines at the top
+                if stripped.startswith("#") or stripped == "":
+                    insert_line = i + 1
+                    continue
+
+                # Track import lines
+                if stripped.startswith("import ") or stripped.startswith("from "):
+                    insert_line = i + 1
+                    continue
+
+                # Stop at first non-import code
+                break
+
+            # Insert the import
+            logging.info(f"Inserting import at line {insert_line}: {repr(import_statement)}")
+            self.replace(import_statement, start=(insert_line, 0), end=(insert_line, 0))
+        except Exception as e:
+            logging.error(f"Failed to add import: {e}", exc_info=True)
 
     def _check_cursor_moved_from_completion(self):
         """Check if cursor moved away from completion position and close if so."""
