@@ -173,7 +173,8 @@ class KeyHandlersMixin:
         should_decrease = False
         if self.language in self.colon_indent_languages:
             stripped = current_line.strip()
-            first_word = stripped.split("(")[0].split()[0] if stripped.split() else ""
+            before_paren = stripped.split("(")[0].split()
+            first_word = before_paren[0] if before_paren else ""
             if first_word in self.dedent_keywords:
                 should_decrease = True
 

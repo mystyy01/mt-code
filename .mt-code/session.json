@@ -31,6 +31,10 @@
     {
       "file_path": "/mnt/ssd/Coding/mt-code/config/ai.json",
       "is_active": false
+    },
+    {
+      "file_path": "/mnt/ssd/Coding/mt-code/test.py",
+      "is_active": false
     }
   ],
   "active_tab_path": "/mnt/ssd/Coding/mt-code/notes.txt"

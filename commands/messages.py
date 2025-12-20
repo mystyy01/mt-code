@@ -128,3 +128,11 @@ class ToggleAIEvent(Message):
         super().__init__()
         self.enabled = enabled
 
+
+class DiffAccepted(Message):
+    """Message sent when user accepts AI-suggested code changes."""
+
+    def __init__(self, new_content: str):
+        super().__init__()
+        self.new_content = new_content
+

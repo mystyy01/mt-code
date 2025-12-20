@@ -42,3 +42,4 @@ have ai be able to change the file your editing (maybe with diffs shown + overla
 have inline suggestions? greyed out text next to the cursor inline that shows what the ai thinks it should add
 option to turn off all ai features and set the AIView to display none
 
+make toggle sidebar keybind toggle the FolderView

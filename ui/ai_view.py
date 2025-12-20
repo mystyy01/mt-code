@@ -9,6 +9,7 @@ import logging
 
 from core.paths import LOG_FILE_STR
 from core.ai_chat import AIChat
+from ui.diff_overlay import DiffOverlay
 
 logging.basicConfig(
     filename=LOG_FILE_STR,
@@ -322,3 +323,87 @@ class AIView(Vertical):
             self.ai_chat.clear_history()
 
         self._add_message("Chat cleared. How can I help?", role="ai")
+
+    def ask_for_edit(self, instruction: str):
+        """Ask AI to edit the current file based on instruction."""
+        if not self.ai_chat or not self.ai_chat.is_available():
+            self._add_message("AI not available. Use 'Set API Key' command.", role="system")
+            return
+
+        # Get current file content
+        if not self.workspace:
+            self._add_message("No workspace available.", role="system")
+            return
+
+        try:
+            editor = self.workspace.tab_manager.get_active_editor()
+            if not editor or not hasattr(editor, 'code_area') or not editor.code_area:
+                self._add_message("No active editor.", role="system")
+                return
+
+            original_code = editor.code_area.text
+            file_path = editor.file_path or "(untitled)"
+        except Exception as e:
+            logging.error(f"Error getting editor content: {e}")
+            self._add_message(f"Error: {e}", role="system")
+            return
+
+        # Add user message to chat
+        self._add_message(f"[Edit request] {instruction}", role="user")
+
+        # Send to AI
+        self._send_edit_request(instruction, original_code, file_path)
+
+    @work(exclusive=True)
+    async def _send_edit_request(self, instruction: str, original_code: str, file_path: str):
+        """Send edit request to AI and show diff overlay on response."""
+        self._update_typing_indicator("AI is editing...")
+
+        # Create placeholder for AI response
+        self.current_ai_message = self._add_message("Generating changes...", role="ai")
+
+        try:
+            # Build the prompt for code editing
+            prompt = f"""Edit the following code according to this instruction: {instruction}
+
+File: {file_path}
+
+```
+{original_code}
+```
+
+IMPORTANT: Return ONLY the complete modified code, nothing else. No explanations, no markdown code blocks, just the raw code."""
+
+            response = await self.ai_chat.send_message(prompt, on_chunk=None)
+
+            # Clean up the response - remove markdown code blocks if present
+            new_code = self._extract_code_from_response(response)
+
+            self._update_ai_message("Changes generated. Review the diff.")
+
+            # Show diff overlay
+            diff_overlay = DiffOverlay(original_code, new_code)
+            self.app.mount(diff_overlay)
+
+        except Exception as e:
+            logging.error(f"AI edit error: {e}")
+            self._update_ai_message(f"Error: {str(e)}")
+        finally:
+            self._update_typing_indicator("")
+            self.current_ai_message = None
+
+    def _extract_code_from_response(self, response: str) -> str:
+        """Extract code from AI response, removing markdown if present."""
+        response = response.strip()
+
+        # Check if response is wrapped in markdown code blocks
+        if response.startswith("```"):
+            lines = response.split("\n")
+            # Remove first line (```language)
+            lines = lines[1:]
+            # Remove last line if it's ```
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            return "\n".join(lines)
+
+        return response

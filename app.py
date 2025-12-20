@@ -1,7 +1,7 @@
 from textual.app import App, ComposeResult
 from workspace.workspace import Workspace
 import sys
-from commands.messages import AppNextTab, TabMessage, FileSelected, FilePathProvided, WorkspaceNewTab, WorkspaceRemoveTab, FocusEditor, SaveAllFiles, SelectAIEvent, APIKeySet, ToggleAIEvent
+from commands.messages import AppNextTab, TabMessage, FileSelected, FilePathProvided, WorkspaceNewTab, WorkspaceRemoveTab, FocusEditor, SaveAllFiles, SelectAIEvent, APIKeySet, ToggleAIEvent, DiffAccepted
 from core.ai_config import get_ai_config
 from pathlib import Path
 from textual.events import Key, Resize
@@ -117,6 +117,8 @@ class TextualApp(App):
         if event.key=="ctrl+k":
             # put whatever popup im testing here
             pass
+        if event.key=="ctrl+l":
+            self._handle_ai_comment_edit()
         if event.key=="f2":
             self.workspace.cmd_rename_file()
     def on_resize(self, event: Resize):
@@ -156,6 +158,76 @@ class TextualApp(App):
             logging.info(f"ai_view.styles.display is now: {self.ai_view.styles.display}")
         else:
             logging.info("ai_view not found!")
+
+    def on_diff_accepted(self, event: DiffAccepted):
+        """Handle accepted AI code changes."""
+        logging.info("DiffAccepted event received")
+        try:
+            editor = self.workspace.tab_manager.get_active_editor()
+            if editor and hasattr(editor, 'code_area') and editor.code_area:
+                editor.code_area.load_text_silent(event.new_content)
+                logging.info("Applied AI changes to editor")
+        except Exception as e:
+            logging.error(f"Error applying AI changes: {e}")
+
+    def _handle_ai_comment_edit(self):
+        """Handle Ctrl+L: extract comment from current line and send to AI for editing."""
+        logging.info("Ctrl+L pressed - checking for comment")
+
+        # Comment prefixes by language
+        comment_prefixes = {
+            "python": ["#"],
+            "javascript": ["//"],
+            "typescript": ["//"],
+            "rust": ["//"],
+            "go": ["//"],
+            "c": ["//"],
+            "cpp": ["//"],
+            "java": ["//"],
+            "lua": ["--"],
+            "sql": ["--"],
+            "bash": ["#"],
+            "shell": ["#"],
+            "ruby": ["#"],
+            "perl": ["#"],
+        }
+        default_prefixes = ["#", "//", "--"]
+
+        try:
+            editor = self.workspace.tab_manager.get_active_editor()
+            if not editor or not hasattr(editor, 'code_area') or not editor.code_area:
+                logging.info("No active editor")
+                return
+
+            code_area = editor.code_area
+            # Get current cursor row
+            cursor_row, _ = code_area.cursor_location
+            current_line = code_area.document.get_line(cursor_row)
+
+            # Get language-specific prefixes
+            language = getattr(code_area, 'language', None) or ""
+            prefixes = comment_prefixes.get(language.lower(), default_prefixes)
+
+            # Check if line starts with a comment prefix
+            stripped = current_line.strip()
+            comment_text = None
+
+            for prefix in prefixes:
+                if stripped.startswith(prefix):
+                    # Extract comment text after prefix
+                    comment_text = stripped[len(prefix):].strip()
+                    break
+
+            if comment_text:
+                logging.info(f"Found comment: {comment_text}")
+                # Send to AI for editing
+                if hasattr(self, 'ai_view') and self.ai_view:
+                    self.ai_view.ask_for_edit(comment_text)
+            else:
+                logging.info("Current line is not a comment")
+
+        except Exception as e:
+            logging.error(f"Error in _handle_ai_comment_edit: {e}")
 
 if __name__ == "__main__":
     TextualApp().run()
