@@ -41,5 +41,6 @@ fix this
 have ai be able to change the file your editing (maybe with diffs shown + overlay to confirm/deny?)
 have inline suggestions? greyed out text next to the cursor inline that shows what the ai thinks it should add
 option to turn off all ai features and set the AIView to display none
+have the ctrl+l keybind added to default keybinds and command palette
 
 make toggle sidebar keybind toggle the FolderView

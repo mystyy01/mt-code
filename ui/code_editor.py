@@ -22,6 +22,7 @@ from ui.lsp_mixin import LSPMixin
 from ui.key_handlers import KeyHandlersMixin
 from core.paths import LOG_FILE_STR
 from core.languages import get_language_for_file
+from core.ai_config import get_ai_config
 
 logging.basicConfig(
     filename=LOG_FILE_STR,
@@ -41,6 +42,7 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
         # Initialize mixin state
         self._init_lsp_state()
         self._init_key_handlers_state()
+        self._init_ai_suggestion_state()
 
         register_supported_languages(self)
 
@@ -114,10 +116,13 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
         if event.text_area.id == self.id:
             await self._lsp_did_change()
 
-            if self._completion_task:
-                self._completion_task.cancel()
-
-            self._completion_task = asyncio.create_task(self._debounced_completions())
+            # If AI is disabled, show LSP completions automatically
+            ai_config = get_ai_config()
+            if not ai_config.is_ai_enabled():
+                if self._completion_task:
+                    self._completion_task.cancel()
+                self._completion_task = asyncio.create_task(self._debounced_completions())
+            # Otherwise, AI suggestions triggered via update_suggestion()
 
     async def on_tab_message(self, message: TabMessage):
         """Handle tab key press for completion insertion or indentation."""
@@ -142,7 +147,22 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
             message.stop()
             return
 
-        # Normal tab behavior
+        # Check for AI suggestion first
+        if self.suggestion:
+            # Only complete one line at a time
+            lines = self.suggestion.split('\n')
+            first_line = lines[0]
+            self.insert(first_line)
+
+            # Keep remaining lines as suggestion
+            if len(lines) > 1:
+                self.suggestion = '\n'.join(lines[1:])
+            else:
+                self.suggestion = ""
+            message.stop()
+            return
+
+        # Normal tab behavior - try LSP completion, otherwise indent
         if self._handle_tab_completion():
             message.stop()
         else:
@@ -219,3 +239,144 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
         if self._handle_key_event(event):
             return
         return super()._on_key(event)
+
+    # === AI Suggestion Methods ===
+
+    def _init_ai_suggestion_state(self):
+        """Initialize AI suggestion state variables."""
+        self._ai_suggestion_task: asyncio.Task | None = None
+        self._ai_suggestion_delay = 0.8  # Delay before fetching AI suggestions
+        self._last_ai_cursor = None
+        self._ai_enabled = True
+
+    def update_suggestion(self) -> None:
+        """Override to trigger AI suggestions with debouncing."""
+        # Check if AI is enabled
+        ai_config = get_ai_config()
+        if not ai_config.is_ai_enabled():
+            self.suggestion = ""
+            return
+
+        # Cancel any pending AI suggestion request
+        if self._ai_suggestion_task and not self._ai_suggestion_task.done():
+            self._ai_suggestion_task.cancel()
+
+        # Get current cursor position
+        cursor_pos = self.cursor_location
+
+        # Don't fetch if cursor hasn't moved meaningfully
+        if cursor_pos == self._last_ai_cursor:
+            return
+
+        self._last_ai_cursor = cursor_pos
+
+        # Start debounced AI suggestion fetch
+        self._ai_suggestion_task = asyncio.create_task(self._debounced_ai_suggestion())
+
+    async def _debounced_ai_suggestion(self):
+        """Debounce AI suggestion requests."""
+        try:
+            await asyncio.sleep(self._ai_suggestion_delay)
+            await self._fetch_ai_suggestion()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logging.error(f"Error in AI suggestion: {e}")
+
+    async def _fetch_ai_suggestion(self):
+        """Fetch AI suggestion for current cursor position."""
+        try:
+            # Get AI chat from app
+            if not hasattr(self, 'app') or not hasattr(self.app, 'ai_view'):
+                return
+
+            ai_view = self.app.ai_view
+            if not ai_view or not ai_view.ai_chat or not ai_view.ai_chat.is_available():
+                return
+
+            # Get context: text before cursor
+            cursor_row, cursor_col = self.cursor_location
+            lines = self.text.split('\n')
+
+            # Get text up to cursor
+            text_before = '\n'.join(lines[:cursor_row])
+            if cursor_row < len(lines):
+                text_before += '\n' + lines[cursor_row][:cursor_col]
+
+            # Get a few lines after for context (but we're completing at cursor)
+            text_after = ""
+            if cursor_row < len(lines):
+                text_after = lines[cursor_row][cursor_col:]
+            if cursor_row + 1 < len(lines):
+                text_after += '\n' + '\n'.join(lines[cursor_row + 1:cursor_row + 5])
+
+            # Build prompt for completion
+            prompt = f"""You are a code completion assistant. Analyze the code context and decide if there's a meaningful completion.
+
+IMPORTANT: Only provide a suggestion if:
+1. The user has left a comment asking for something to be implemented (e.g., "# TODO:", "# implement", "// add")
+2. There's an obvious incomplete statement (e.g., function call missing arguments, incomplete expression)
+3. The context strongly suggests what should come next (e.g., after "def " or "if ")
+
+If there's no meaningful completion, respond with exactly: NO_SUGGESTION
+
+If you have a suggestion, return ONLY the code to insert. No explanations, no markdown, no code blocks.
+
+Language: {self.language or 'unknown'}
+
+Code before cursor:
+{text_before[-1500:]}
+
+Code after cursor:
+{text_after[:500]}
+
+Response:"""
+
+            # Send to AI (use a shorter timeout for suggestions)
+            response = await asyncio.wait_for(
+                ai_view.ai_chat.send_message(prompt, on_chunk=None),
+                timeout=5.0
+            )
+
+            # Clean up response
+            suggestion = self._clean_ai_suggestion(response)
+
+            # Only set if we're still at the same cursor position
+            if self.cursor_location == self._last_ai_cursor and suggestion:
+                self.suggestion = suggestion
+                logging.info(f"AI suggestion: {suggestion[:50]}...")
+
+        except asyncio.TimeoutError:
+            logging.debug("AI suggestion timed out")
+        except Exception as e:
+            logging.error(f"Error fetching AI suggestion: {e}")
+
+    def _clean_ai_suggestion(self, response: str) -> str:
+        """Clean AI response to extract just the completion."""
+        response = response.strip()
+
+        # Check for no suggestion response
+        if response.upper() == "NO_SUGGESTION" or "NO_SUGGESTION" in response.upper():
+            return ""
+
+        # Remove markdown code blocks if present
+        if response.startswith("```"):
+            lines = response.split('\n')
+            lines = lines[1:]  # Remove opening ```
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            response = '\n'.join(lines)
+
+        # Remove common prefixes the AI might add
+        prefixes_to_remove = [
+            "Here's the completion:",
+            "Completion:",
+            "Here is the completion:",
+            "Here's the code:",
+            "Code:",
+        ]
+        for prefix in prefixes_to_remove:
+            if response.lower().startswith(prefix.lower()):
+                response = response[len(prefix):].strip()
+
+        return response

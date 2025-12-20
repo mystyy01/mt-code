@@ -143,6 +143,11 @@ class KeyHandlersMixin:
             self.save_file()
 
         if event.key == "ctrl+space":
+            # Clear AI suggestion to show only LSP completions
+            self.suggestion = ""
+            # Cancel any pending AI suggestion request
+            if hasattr(self, '_ai_suggestion_task') and self._ai_suggestion_task:
+                self._ai_suggestion_task.cancel()
             asyncio.create_task(self.show_completions())
             event.prevent_default()
 
