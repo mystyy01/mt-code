@@ -44,3 +44,5 @@ option to turn off all ai features and set the AIView to display none
 have the ctrl+l keybind added to default keybinds and command palette
 
 make toggle sidebar keybind toggle the FolderView
+
+post to reddit the gif of the demo with ai features
