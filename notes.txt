@@ -1,5 +1,8 @@
 make toggle sidebar keybind toggle the FolderView - Done
 
-post to reddit the gif of the demo with ai features
+post to reddit the gif of the demo with ai features - Done
 
-finish the ctrl+click to open definition.
+finish the ctrl+click to open definition. - WIP
+
+ability to change python interpreter (setup run file to work with venvs)
+
