@@ -240,6 +240,68 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
             return
         return super()._on_key(event)
 
+    async def on_click(self, event: events.Click) -> None:
+        """Handle mouse click events for ctrl+click go-to-definition."""
+        logging.info(f"on_click triggered: x={event.x}, y={event.y}, ctrl={event.ctrl}, button={event.button}")
+        if event.ctrl:
+            logging.info("Ctrl+click detected!")
+            # First, let the parent handle the click to position the cursor correctly
+            # Then use cursor_location which is more reliable than manual calculation
+
+            # Calculate position manually for comparison/debugging
+            manual_position = self._click_to_document_position(event)
+            logging.info(f"Manual calculated position: {manual_position}")
+
+            # Get cursor position from click using TextArea's offset_to_location
+            try:
+                # offset in the event is relative to widget content
+                click_offset = event.offset
+                logging.info(f"Click offset: {click_offset}")
+
+                # Use cursor_screen_offset to help debug
+                logging.info(f"Current cursor_location before: {self.cursor_location}")
+
+                # Try using the click coordinates with scroll offset
+                scroll_y = self.scroll_offset.y
+                scroll_x = self.scroll_offset.x
+                gutter_width = self.gutter_width if hasattr(self, 'gutter_width') else 0
+                logging.info(f"Gutter width: {gutter_width}, scroll: ({scroll_x}, {scroll_y})")
+
+                # Attempt to get location from the actual click
+                # The y coordinate should map directly to lines
+                # But we may need to subtract 1 if there's a header
+                doc_line = int(event.y + scroll_y)
+
+                # Try with offset adjustment
+                adjusted_line = doc_line - 1 if doc_line > 0 else 0
+                logging.info(f"Trying adjusted line: {adjusted_line} (original: {doc_line})")
+
+                # Get line text at both positions for debugging
+                if doc_line < self.document.line_count:
+                    logging.info(f"Line at doc_line={doc_line}: '{self.get_line(doc_line)}'")
+                if adjusted_line < self.document.line_count:
+                    logging.info(f"Line at adjusted_line={adjusted_line}: '{self.get_line(adjusted_line)}'")
+
+                # Use adjusted position
+                line_number_width = len(str(self.document.line_count)) + 2
+                doc_col = max(0, int(event.x - line_number_width + scroll_x))
+                doc_position = (adjusted_line, doc_col)
+
+            except Exception as e:
+                logging.error(f"Error getting position: {e}", exc_info=True)
+                doc_position = manual_position
+
+            logging.info(f"Final document position: {doc_position}")
+            if doc_position:
+                logging.info(f"Calling _goto_definition with position {doc_position}")
+                await self._goto_definition(doc_position)
+            else:
+                logging.warning("Could not determine document position from click")
+            event.stop()
+            return
+        else:
+            logging.debug(f"Regular click (no ctrl): x={event.x}, y={event.y}")
+
     # === AI Suggestion Methods ===
 
     def _init_ai_suggestion_state(self):

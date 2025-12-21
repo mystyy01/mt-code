@@ -199,8 +199,9 @@ class WorkspaceCommandsMixin:
 
     def cmd_toggle_sidebar(self, **kwargs):
         """Toggle sidebar visibility."""
-        print("Toggling sidebar…")
-        # sidebar logic here
+        if self.folder_view:
+            current = self.folder_view.styles.display
+            self.folder_view.styles.display = "none" if current == "block" else "block"
 
     def cmd_quit_app(self, **kwargs):
         """Quit the application."""

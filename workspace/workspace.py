@@ -17,7 +17,7 @@ from commands.messages import (
     FilePathProvided, WorkspaceNewTab, WorkspaceNextTab, AppNextTab,
     CommandPaletteCommand, OpenCommandPalette, FocusEditor,
     SelectSyntaxEvent, GitCommitMessageSubmitted, LineInputSubmitted, TabMessage,
-    RenameFileProvided
+    RenameFileProvided, GotoFileLocation
 )
 from ui.open_file import OpenFilePopup
 from ui.tab_manager import TabManager
@@ -246,6 +246,47 @@ class Workspace(WorkspaceCommandsMixin, Container):
                 tab_widget.label = self.tab_manager.make_relative(new_path)
 
         logging.info(f"Renamed file from {old_path} to {new_path}")
+
+    def on_goto_file_location(self, event: GotoFileLocation):
+        """Handle request to open file at specific location (for go-to-definition)."""
+        logging.info(f"on_goto_file_location received: file={event.file_path}, line={event.line}, col={event.column}")
+        abs_path = str(Path(event.file_path).resolve())
+        logging.info(f"Resolved absolute path: {abs_path}")
+
+        # Check if file is already open
+        existing_tab_id = self.tab_manager.find_tab_by_path(abs_path)
+        logging.info(f"Existing tab id for path: {existing_tab_id}")
+
+        if existing_tab_id is not None:
+            # Switch to existing tab
+            logging.info(f"Switching to existing tab: {existing_tab_id}")
+            self.tab_manager.switch_tab(existing_tab_id)
+        else:
+            # Open new tab
+            if self.tab_manager.tabs:
+                max_id = max(int(tab_id) for tab_id in self.tab_manager.tabs.keys())
+            else:
+                max_id = -1
+            next_id = str(max_id + 1)
+            logging.info(f"Opening new tab with id: {next_id}")
+            self.new_tab(abs_path, next_id)
+
+        # Navigate to position after editor is ready
+        def navigate():
+            logging.info(f"navigate() callback executing for line={event.line}, col={event.column}")
+            editor = self.tab_manager.get_active_editor()
+            if editor and hasattr(editor, 'code_area') and editor.code_area:
+                logging.info(f"Moving cursor to ({event.line}, {event.column})")
+                editor.code_area.move_cursor((event.line, event.column))
+                editor.code_area.scroll_cursor_visible()
+                editor.code_area.focus()
+                logging.info("Navigation complete")
+            else:
+                logging.warning("Could not get editor or code_area for navigation")
+
+        # Use call_later to ensure editor is mounted
+        logging.info("Scheduling navigate() with call_later")
+        self.call_later(navigate)
 
     # === Command Palette ===
 

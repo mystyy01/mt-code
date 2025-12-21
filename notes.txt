@@ -1,48 +1,5 @@
-╭────────────────────────────────────────────────────────────────────────────────────────────────────────── Traceback (most recent call last) ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ /mnt/ssd/Coding/mt-code/ui/code_editor.py:219 in _on_key                                                                                                                                                                                               │
-│                                                                                                                                                                                                                                                        │
-│   216 │                                                                                        ╭──────────────────────────────────────────────── locals ─────────────────────────────────────────────────╮                                             │
-│   217 │   def _on_key(self, event: events.Key) -> None:                                        │ event = Key(key='enter', character='\r', name='enter', is_printable=False, aliases=['enter', 'ctrl+m']) │                                             │
-│   218 │   │   """Handle key events for auto-pairing and shortcuts."""                          │  self = CodeEditor(id='qkhogb', classes='editor')                                                       │                                             │
-│ ❱ 219 │   │   if self._handle_key_event(event):                                                ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────╯                                             │
-│   220 │   │   │   return                                                                                                                                                                                                                               │
-│   221 │   │   return super()._on_key(event)                                                                                                                                                                                                            │
-│   222                                                                                                                                                                                                                                                  │
-│                                                                                                                                                                                                                                                        │
-│ /mnt/ssd/Coding/mt-code/ui/key_handlers.py:65 in _handle_key_event                                                                                                                                                                                     │
-│                                                                                                                                                                                                                                                        │
-│    62 │   │   │   return True                                                                  ╭──────────────────────────────────────────────── locals ─────────────────────────────────────────────────╮                                             │
-│    63 │   │                                                                                    │ event = Key(key='enter', character='\r', name='enter', is_printable=False, aliases=['enter', 'ctrl+m']) │                                             │
-│    64 │   │   # Handle auto-indentation on Enter                                               │  self = CodeEditor(id='qkhogb', classes='editor')                                                       │                                             │
-│ ❱  65 │   │   if self._handle_auto_indent(event):                                              ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────╯                                             │
-│    66 │   │   │   return True                                                                                                                                                                                                                          │
-│    67 │   │                                                                                                                                                                                                                                            │
-│    68 │   │   # Handle shortcuts                                                                                                                                                                                                                       │
-│                                                                                                                                                                                                                                                        │
-│ /mnt/ssd/Coding/mt-code/ui/key_handlers.py:176 in _handle_auto_indent                                                                                                                                                                                  │
-│                                                                                                                                                                                                                                                        │
-│   173 │   │   should_decrease = False                                                          ╭───────────────────────────────────────────────────── locals ──────────────────────────────────────────────────────╮                                   │
-│   174 │   │   if self.language in self.colon_indent_languages:                                 │             col = 43                                                                                              │                                   │
-│   175 │   │   │   stripped = current_line.strip()                                              │  current_indent = 4                                                                                               │                                   │
-│ ❱ 176 │   │   │   first_word = stripped.split("(")[0].split()[0] if stripped.split() else ""   │    current_line = '    ("Command Palette", "command_palette"),'                                                   │                                   │
-│   177 │   │   │   if first_word in self.dedent_keywords:                                       │           event = Key(key='enter', character='\r', name='enter', is_printable=False, aliases=['enter', 'ctrl+m']) │                                   │
-│   178 │   │   │   │   should_decrease = True                                                   │      indent_str = '    '                                                                                          │                                   │
-│   179                                                                                          │     indent_unit = 4                                                                                               │                                   │
-│                                                                                                │             row = 44                                                                                              │                                   │
-│                                                                                                │            self = CodeEditor(id='qkhogb', classes='editor')                                                       │                                   │
-│                                                                                                │ should_decrease = False                                                                                           │                                   │
-│                                                                                                │ should_increase = False                                                                                           │                                   │
-│                                                                                                │        stripped = '("Command Palette", "command_palette"),'                                                       │                                   │
-│                                                                                                ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯                                   │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-IndexError: list index out of range
-fix this
-
-have ai be able to change the file your editing (maybe with diffs shown + overlay to confirm/deny?)
-have inline suggestions? greyed out text next to the cursor inline that shows what the ai thinks it should add
-option to turn off all ai features and set the AIView to display none
-have the ctrl+l keybind added to default keybinds and command palette
-
-make toggle sidebar keybind toggle the FolderView
+make toggle sidebar keybind toggle the FolderView - Done
 
 post to reddit the gif of the demo with ai features
+
+finish the ctrl+click to open definition.

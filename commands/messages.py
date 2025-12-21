@@ -136,3 +136,13 @@ class DiffAccepted(Message):
         super().__init__()
         self.new_content = new_content
 
+
+class GotoFileLocation(Message):
+    """Message to open a file and navigate to a specific location."""
+
+    def __init__(self, file_path: str, line: int = 0, column: int = 0):
+        super().__init__()
+        self.file_path = file_path
+        self.line = line
+        self.column = column
+

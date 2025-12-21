@@ -6,16 +6,24 @@
     },
     {
       "file_path": "/home/juxtaa/coding/mt-code/test.py",
-      "is_active": true
+      "is_active": false
     },
     {
       "file_path": "/home/juxtaa/coding/mt-code/notes.txt",
-      "is_active": false
+      "is_active": true
     },
     {
       "file_path": "/home/juxtaa/coding/mt-code/commands/messages.py",
       "is_active": false
+    },
+    {
+      "file_path": "/home/juxtaa/coding/mt-code/example.py",
+      "is_active": false
+    },
+    {
+      "file_path": "/home/juxtaa/coding/mt-code/editor_view.log",
+      "is_active": false
     }
   ],
-  "active_tab_path": "/home/juxtaa/coding/mt-code/test.py"
+  "active_tab_path": "/home/juxtaa/coding/mt-code/notes.txt"
 }

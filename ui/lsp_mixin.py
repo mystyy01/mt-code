@@ -374,3 +374,162 @@ class LSPMixin:
         """Disable LSP (e.g., when changing to non-Python language)."""
         self.lsp = None
         self._lsp_initialized = False
+
+    # === Go to Definition Methods ===
+
+    def _click_to_document_position(self, event) -> tuple[int, int] | None:
+        """Convert click screen coordinates to document (line, col) position."""
+        logging.info(f"_click_to_document_position called with event x={event.x}, y={event.y}")
+        try:
+            scroll_y = self.scroll_offset.y
+            scroll_x = self.scroll_offset.x
+            line_number_width = len(str(self.document.line_count)) + 2
+            logging.info(f"Scroll offset: x={scroll_x}, y={scroll_y}, line_number_width={line_number_width}")
+
+            # event.x and event.y are relative to the widget
+            doc_line = int(event.y + scroll_y)
+            doc_col = int(event.x - line_number_width + scroll_x)
+            logging.info(f"Calculated doc_line={doc_line}, doc_col={doc_col}")
+
+            # Validate bounds
+            if doc_line < 0 or doc_line >= self.document.line_count:
+                logging.warning(f"doc_line {doc_line} out of bounds (0-{self.document.line_count-1})")
+                return None
+            if doc_col < 0:
+                logging.info(f"doc_col {doc_col} was negative, clamping to 0")
+                doc_col = 0
+
+            # Clamp column to line length
+            line_text = str(self.get_line(doc_line))
+            original_col = doc_col
+            doc_col = min(doc_col, len(line_text))
+            if original_col != doc_col:
+                logging.info(f"Clamped doc_col from {original_col} to {doc_col} (line length: {len(line_text)})")
+
+            logging.info(f"Final document position: ({doc_line}, {doc_col}), line text: '{line_text[:50]}...'")
+            return (doc_line, doc_col)
+        except Exception as e:
+            logging.error(f"Error converting click to position: {e}", exc_info=True)
+            return None
+
+    async def _goto_definition(self, position: tuple[int, int]):
+        """Request definition location from LSP and navigate to it."""
+        logging.info(f"_goto_definition called with position={position}")
+        logging.info(f"LSP state: lsp={bool(self.lsp)}, file_path={self.file_path}, initialized={self._lsp_initialized}")
+
+        if not self.lsp or not self.file_path or not self._lsp_initialized:
+            logging.warning("LSP not available for goto definition - aborting")
+            return
+
+        line, col = position
+        uri = Path(self.file_path).resolve().as_uri()
+        logging.info(f"Sending textDocument/definition request: uri={uri}, line={line}, col={col}")
+
+        try:
+            resp = await self.lsp.send_request(
+                "textDocument/definition",
+                {
+                    "textDocument": {"uri": uri},
+                    "position": {"line": line, "character": col}
+                }
+            )
+            logging.info(f"LSP response received: {resp}")
+
+            result = resp.get("result")
+            if not result:
+                logging.info("No definition found in LSP response (result is empty)")
+                return
+
+            logging.info(f"Raw result from LSP: {result}")
+
+            # Normalize result to list of locations
+            locations = self._normalize_definition_result(result)
+            logging.info(f"Normalized locations: {locations}")
+
+            if not locations:
+                logging.info("No locations after normalization")
+                return
+
+            logging.info(f"Got {len(locations)} definition location(s)")
+
+            if len(locations) == 1:
+                logging.info(f"Single location, navigating directly to: {locations[0]}")
+                await self._navigate_to_location(locations[0])
+            else:
+                logging.info(f"Multiple locations ({len(locations)}), showing overlay")
+                await self._show_references_overlay(locations)
+
+        except Exception as e:
+            logging.error(f"Error requesting definition: {e}", exc_info=True)
+
+    def _normalize_definition_result(self, result) -> list[dict]:
+        """Normalize definition result to list of Location objects."""
+        if isinstance(result, dict):
+            # Single Location or LocationLink
+            if "targetUri" in result:
+                # LocationLink format
+                return [{
+                    "uri": result["targetUri"],
+                    "range": result.get("targetSelectionRange", result.get("targetRange", {}))
+                }]
+            else:
+                # Location format
+                return [result]
+        elif isinstance(result, list):
+            locations = []
+            for item in result:
+                if "targetUri" in item:
+                    locations.append({
+                        "uri": item["targetUri"],
+                        "range": item.get("targetSelectionRange", item.get("targetRange", {}))
+                    })
+                else:
+                    locations.append(item)
+            return locations
+        return []
+
+    async def _navigate_to_location(self, location: dict):
+        """Navigate to a location, opening file if needed."""
+        logging.info(f"_navigate_to_location called with location={location}")
+        from commands.messages import GotoFileLocation
+
+        uri = location.get("uri", "")
+        range_info = location.get("range", {})
+        start = range_info.get("start", {})
+        target_line = start.get("line", 0)
+        target_col = start.get("character", 0)
+
+        logging.info(f"Parsed location: uri={uri}, target_line={target_line}, target_col={target_col}")
+
+        # Convert file:// URI to path
+        if uri.startswith("file://"):
+            file_path = uri[7:]
+            logging.info(f"Converted file:// URI to path: {file_path}")
+        else:
+            file_path = uri
+            logging.info(f"URI was not file://, using as-is: {file_path}")
+
+        current_file = str(Path(self.file_path).resolve())
+        target_file = str(Path(file_path).resolve())
+
+        logging.info(f"Current file: {current_file}")
+        logging.info(f"Target file: {target_file}")
+
+        if current_file == target_file:
+            # Same file - just move cursor
+            logging.info(f"Same file - moving cursor to ({target_line}, {target_col})")
+            self.move_cursor((target_line, target_col))
+            self.scroll_cursor_visible()
+            logging.info("Cursor moved and scrolled into view")
+        else:
+            # Different file - post message to open file at location
+            logging.info(f"Different file - posting GotoFileLocation message")
+            self.post_message(GotoFileLocation(target_file, target_line, target_col))
+            logging.info("GotoFileLocation message posted")
+
+    async def _show_references_overlay(self, locations: list[dict]):
+        """Show overlay for selecting from multiple definition locations."""
+        from ui.references_overlay import ReferencesOverlay
+
+        overlay = ReferencesOverlay(locations, id="references_overlay")
+        await self.screen.mount(overlay)
