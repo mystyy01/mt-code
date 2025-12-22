@@ -36,26 +36,101 @@ class LSPMixin:
         self._last_completion_cursor = None
         self._current_completions = []
 
+    def _get_project_root(self) -> Path:
+        """Get the project root directory for LSP initialization."""
+        # Try to get project root from workspace
+        try:
+            from workspace.workspace import Workspace
+            workspace = self.app.query_one(Workspace)
+            if workspace and workspace.project_root:
+                return Path(workspace.project_root).resolve()
+        except Exception:
+            pass
+
+        # Fallback: look for common project markers
+        file_dir = Path(self.file_path).resolve().parent
+        for parent in [file_dir] + list(file_dir.parents):
+            markers = ['.git', 'pyproject.toml', 'setup.py', 'setup.cfg', 'pyrightconfig.json']
+            if any((parent / marker).exists() for marker in markers):
+                return parent
+
+        # Last fallback: file's parent directory
+        return file_dir
+
+    def _get_python_interpreter(self) -> str | None:
+        """Get the configured Python interpreter path."""
+        try:
+            from core.python_config import get_python_config
+            python_config = get_python_config()
+            project_root = self._get_project_root()
+
+            # First try the effective interpreter (handles auto-detection)
+            interpreter = python_config.get_effective_interpreter(str(project_root))
+
+            # If we got python3, try to find venv manually
+            if interpreter == "python3":
+                # Check for venv in project root
+                for venv_name in ("venv", ".venv", "env", ".env"):
+                    venv_python = project_root / venv_name / "bin" / "python"
+                    if venv_python.exists():
+                        interpreter = str(venv_python)
+                        logging.info(f"Found venv Python at: {interpreter}")
+                        break
+
+            # Handle relative paths by resolving against project root
+            if interpreter and not Path(interpreter).is_absolute():
+                resolved = project_root / interpreter
+                if resolved.exists():
+                    interpreter = str(resolved)
+                    logging.info(f"Resolved relative interpreter path to: {interpreter}")
+
+            if interpreter and interpreter != "python3" and Path(interpreter).exists():
+                return interpreter
+
+        except Exception as e:
+            logging.warning(f"Could not get Python interpreter: {e}")
+        return None
+
     async def _init_lsp(self):
         """Initialize LSP server for Python files. Call from on_mount."""
         if self.language == "python" and self.file_path:
             logging.info(f"Initializing LSP for {self.file_path}")
             try:
-                self.lsp = PyrightServer(Path(self.file_path).resolve().parent)
+                project_root = self._get_project_root()
+                logging.info(f"Using project root for LSP: {project_root}")
+
+                # Get Python interpreter for pyright
+                python_path = self._get_python_interpreter()
+                logging.info(f"Using Python interpreter for LSP: {python_path}")
+
+                self.lsp = PyrightServer(project_root)
                 await self.lsp.start()
+
+                # Build initialization options with Python path if available
+                init_options = {}
+                if python_path:
+                    init_options["python"] = {
+                        "pythonPath": python_path
+                    }
 
                 init_response = await self.lsp.send_request(
                     "initialize",
                     {
                         "processId": None,
-                        "rootUri": Path(self.file_path).resolve().parent.as_uri(),
+                        "rootUri": project_root.as_uri(),
+                        "initializationOptions": init_options,
                         "capabilities": {
                             "textDocument": {
                                 "completion": {
                                     "completionItem": {
                                         "snippetSupport": True
                                     }
-                                }
+                                },
+                                "definition": {
+                                    "linkSupport": True
+                                },
+                                "hover": {},
+                                "signatureHelp": {}
                             }
                         }
                     }
@@ -65,11 +140,66 @@ class LSPMixin:
                 await self.lsp.send_notification("initialized", {})
                 self._lsp_initialized = True
 
+                # Send Python configuration to pyright
+                if python_path:
+                    await self._send_python_config(python_path)
+
                 await self._lsp_did_open()
+
+                # Warmup: Send a completion request to trigger pyright to analyze the file
+                # This ensures definition lookups work immediately after initialization
+                await self._lsp_warmup()
             except Exception as e:
                 logging.error(f"Failed to initialize LSP: {e}", exc_info=True)
                 self.lsp = None
                 self._lsp_initialized = False
+
+    async def _send_python_config(self, python_path: str):
+        """Send Python configuration to pyright via workspace/didChangeConfiguration."""
+        if not self.lsp or not self._lsp_initialized:
+            return
+
+        logging.info(f"Sending Python config to pyright: {python_path}")
+        try:
+            # Pyright accepts pythonPath in settings
+            # Also try to find venv path for better package resolution
+            venv_path = None
+            venv_name = None
+            python_path_obj = Path(python_path).resolve()
+
+            # Check if this is a venv Python
+            venv_names = ("venv", ".venv", "env", ".env")
+            for parent in python_path_obj.parents:
+                if parent.name in venv_names:
+                    venv_name = parent.name
+                    venv_path = str(parent.parent)
+                    logging.info(f"Detected venv: name={venv_name}, path={venv_path}")
+                    break
+
+            settings = {
+                "python": {
+                    "pythonPath": python_path,
+                    "analysis": {
+                        "autoSearchPaths": True,
+                        "useLibraryCodeForTypes": True,
+                        "diagnosticMode": "openFilesOnly"
+                    }
+                }
+            }
+
+            # Pyright needs both venvPath (parent dir) and venv (folder name)
+            if venv_path and venv_name:
+                settings["python"]["venvPath"] = venv_path
+                settings["python"]["venv"] = venv_name
+                logging.info(f"Set venvPath={venv_path}, venv={venv_name}")
+
+            await self.lsp.send_notification(
+                "workspace/didChangeConfiguration",
+                {"settings": settings}
+            )
+            logging.info("Python config sent to pyright")
+        except Exception as e:
+            logging.warning(f"Failed to send Python config: {e}")
 
     async def _lsp_did_open(self):
         """Send didOpen notification to LSP server."""
@@ -89,6 +219,33 @@ class LSPMixin:
                 )
             except Exception as e:
                 logging.error(f"Failed to send didOpen: {e}", exc_info=True)
+
+    async def _lsp_warmup(self):
+        """Send a warmup request to ensure pyright has analyzed the file.
+
+        This triggers pyright's file analysis so that definition lookups
+        work immediately without needing a completion request first.
+        """
+        if not self.lsp or not self.file_path or not self._lsp_initialized:
+            return
+
+        logging.info("Sending LSP warmup request")
+        try:
+            # Give pyright time to start analyzing after didOpen
+            # This delay matches the completion debounce delay
+            await asyncio.sleep(0.3)
+
+            # Send a completion request to trigger/wait for analysis
+            await self.lsp.send_request(
+                "textDocument/completion",
+                {
+                    "textDocument": {"uri": Path(self.file_path).resolve().as_uri()},
+                    "position": {"line": 0, "character": 0}
+                }
+            )
+            logging.info("LSP warmup complete")
+        except Exception as e:
+            logging.warning(f"LSP warmup failed (non-critical): {e}")
 
     async def _lsp_did_change(self):
         """Send didChange notification to LSP server."""
@@ -384,6 +541,18 @@ class LSPMixin:
 
     # === Go to Definition Methods ===
 
+    def _post_to_workspace(self, message):
+        """Post message directly to workspace to ensure it's received."""
+        from workspace.workspace import Workspace
+        try:
+            logging.info(f"Attempting to post {type(message).__name__} to workspace")
+            workspace = self.app.query_one(Workspace)
+            logging.info(f"Found workspace: {workspace}")
+            workspace.post_message(message)
+            logging.info(f"Successfully posted {type(message).__name__} to workspace")
+        except Exception as e:
+            logging.error(f"Failed to post message to workspace: {e}", exc_info=True)
+
     def _click_to_document_position(self, event) -> tuple[int, int] | None:
         """Convert click screen coordinates to document (line, col) position."""
         logging.info(f"_click_to_document_position called with event x={event.x}, y={event.y}")
@@ -529,10 +698,10 @@ class LSPMixin:
             self.scroll_cursor_visible()
             logging.info("Cursor moved and scrolled into view")
         else:
-            # Different file - post message to open file at location
-            logging.info(f"Different file - posting GotoFileLocation message")
-            self.post_message(GotoFileLocation(target_file, target_line, target_col))
-            logging.info("GotoFileLocation message posted")
+            # Different file - post message directly to workspace
+            logging.info(f"Different file - posting GotoFileLocation to workspace")
+            self._post_to_workspace(GotoFileLocation(target_file, target_line, target_col))
+            logging.info("GotoFileLocation message posted to workspace")
 
     async def _show_references_overlay(self, locations: list[dict]):
         """Show overlay for selecting from multiple definition locations."""

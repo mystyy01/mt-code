@@ -2,7 +2,7 @@ make toggle sidebar keybind toggle the FolderView - Done
 
 post to reddit the gif of the demo with ai features - Done
 
-finish the ctrl+click to open definition. - KINDA DONE
+finish the ctrl+click to open definition. - Done
 
 ability to change python interpreter (setup run file to work with venvs) - Done
 
@@ -10,4 +10,4 @@ pyright arrow keys work but dont actually submit the option you press it just su
 
 watch for changes in open files and correct the contents to be the new updates one - Done
 
-The ctrl+click is working now but doesnt work unless an auto complete from pyright is requested first. Maybe its not initilizted on startup correctrly? idek - check logs around this time: 2025-12-21 20:01:28,135
+The ctrl+click is working now but doesnt work unless an auto complete from pyright is requested first. Maybe its not initilizted on startup correctrly? idek - check logs around this time: 2025-12-21 20:01:28,135 - Done (added LSP warmup request after initialization and added definition capability to LSP client)

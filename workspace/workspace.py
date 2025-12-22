@@ -272,8 +272,8 @@ class Workspace(WorkspaceCommandsMixin, Container):
             self.new_tab(abs_path, next_id)
 
         # Navigate to position after editor is ready
-        def navigate():
-            logging.info(f"navigate() callback executing for line={event.line}, col={event.column}")
+        def navigate(retries=5):
+            logging.info(f"navigate() callback executing for line={event.line}, col={event.column}, retries left={retries}")
             editor = self.tab_manager.get_active_editor()
             if editor and hasattr(editor, 'code_area') and editor.code_area:
                 logging.info(f"Moving cursor to ({event.line}, {event.column})")
@@ -281,12 +281,16 @@ class Workspace(WorkspaceCommandsMixin, Container):
                 editor.code_area.scroll_cursor_visible()
                 editor.code_area.focus()
                 logging.info("Navigation complete")
+            elif retries > 0:
+                # Editor not ready yet, retry after a short delay
+                logging.info(f"Editor not ready, scheduling retry ({retries} left)")
+                self.set_timer(0.1, lambda: navigate(retries - 1))
             else:
-                logging.warning("Could not get editor or code_area for navigation")
+                logging.warning("Could not get editor or code_area for navigation after retries")
 
-        # Use call_later to ensure editor is mounted
-        logging.info("Scheduling navigate() with call_later")
-        self.call_later(navigate)
+        # Use set_timer to give new tab time to mount and initialize
+        logging.info("Scheduling navigate() with set_timer")
+        self.set_timer(0.1, navigate)
 
     # === Command Palette ===
 

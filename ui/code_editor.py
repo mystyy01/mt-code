@@ -104,12 +104,14 @@ class CodeEditor(LSPMixin, KeyHandlersMixin, TextArea):
                 self.language = detected_lang
                 logging.info(f"Auto-detected language: {detected_lang} for {self.file_path}")
 
-        await self._init_lsp()
-
+        # Load file content BEFORE initializing LSP so pyright gets the actual content
         if self.file_path:
             self.load_text_silent(read_file(self.file_path))
         else:
             self.text = ""
+
+        # Initialize LSP after content is loaded
+        await self._init_lsp()
 
     async def on_text_area_changed(self, event: TextArea.Changed):
         """Handle text changes and notify LSP server."""

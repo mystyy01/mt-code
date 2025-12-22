@@ -1,4 +1,4 @@
 {
-  "interpreter_path": "/venv/bin/python3",
+  "interpreter_path": "venv/bin/python",
   "auto_detect_venv": true
 }
